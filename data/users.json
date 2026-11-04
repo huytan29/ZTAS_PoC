@@ -1,0 +1,19 @@
+{
+  "users": [
+    {
+      "password_hash": "DAN_HASH_ALICE_VAO_DAY",
+      "role": "employee",
+      "username": "alice"
+    },
+    {
+      "password_hash": "DAN_HASH_MANAGER_VAO_DAY",
+      "role": "manager",
+      "username": "manager"
+    },
+    {
+      "password_hash": "pbkdf2_sha256$200000$1d8df1237269b32a4453efeb80be896b$f088c0adb82b40b6a54cc0b67caa49c46fe5621d006dcd36c42e76652421df7a",
+      "role": "admin",
+      "username": "admin"
+    }
+  ]
+}

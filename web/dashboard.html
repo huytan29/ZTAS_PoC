@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZTAS | Dashboard thiết bị</title>
+  <link rel="stylesheet" href="/assets/common.css">
+  <link rel="stylesheet" href="/assets/dashboard.css">
+  <script defer src="/assets/dashboard.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar__content">
+      <a class="brand" href="/dashboard">
+        <span class="brand__mark">◆</span>
+        <span>ZTAS Security Console</span>
+      </a>
+      <nav class="navigation" aria-label="Điều hướng chính">
+        <a class="navigation__link navigation__link--active" href="/dashboard">Thiết bị</a>
+        <a class="navigation__link" href="/logs">Nhật ký</a>
+        <span class="service-status" id="connection-status">
+          <i class="status-dot"></i>Đang kết nối
+        </span>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page-container">
+    <section class="page-heading">
+      <div>
+        <h1>Trạng thái thiết bị</h1>
+        <p>Danh sách thiết bị trong PoC và trạng thái Zero Trust mới nhất của từng thiết bị.</p>
+      </div>
+      <time class="last-updated" id="last-updated">Chưa có dữ liệu</time>
+    </section>
+
+    <section class="metric-grid" aria-label="Tổng quan thiết bị">
+      <article class="metric-card">
+        <span class="metric-card__label">Tổng thiết bị</span>
+        <strong class="metric-card__value" id="total-devices">0</strong>
+      </article>
+      <article class="metric-card metric-card--success">
+        <span class="metric-card__label">Đã xác định</span>
+        <strong class="metric-card__value" id="identified-devices">0</strong>
+      </article>
+      <article class="metric-card metric-card--danger">
+        <span class="metric-card__label">Chưa xác định</span>
+        <strong class="metric-card__value" id="unidentified-devices">0</strong>
+      </article>
+      <article class="metric-card metric-card--warning">
+        <span class="metric-card__label">Cần xác thực thêm</span>
+        <strong class="metric-card__value" id="step-up-devices">0</strong>
+      </article>
+    </section>
+
+    <section class="dashboard-overview">
+      <article class="panel">
+        <header class="panel__header">
+          <h2>Trạng thái hoạt động</h2>
+          <p>Dịch vụ cốt lõi của mô hình PoC</p>
+        </header>
+        <div class="service-list">
+          <div class="service-list__row">
+            <span>ZTAS Authorization Service</span>
+            <strong class="text-success" id="ztas-state">Đang kiểm tra</strong>
+          </div>
+          <div class="service-list__row">
+            <span>Policy Engine</span>
+            <strong>OPA qua Docker</strong>
+          </div>
+          <div class="service-list__row">
+            <span>Thiết bị có hoạt động</span>
+            <strong id="active-device-count">0 thiết bị</strong>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <header class="panel__header">
+          <h2>Phân loại thiết bị</h2>
+          <p>Ba trạng thái cấp một</p>
+        </header>
+        <div class="chart-panel">
+          <div class="donut-chart" id="device-donut">
+            <div class="donut-chart__center">
+              <strong id="donut-total">0</strong>
+              <span>thiết bị</span>
+            </div>
+          </div>
+          <div class="chart-legend">
+            <div><span><i class="status-dot status-dot--success"></i>Đã xác định</span><b id="legend-identified">0</b></div>
+            <div><span><i class="status-dot status-dot--danger"></i>Chưa xác định</span><b id="legend-unidentified">0</b></div>
+            <div><span><i class="status-dot status-dot--warning"></i>Cần xác thực thêm</span><b id="legend-step-up">0</b></div>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="device-section">
+      <header class="section-heading">
+        <div>
+          <h2>Thiết bị trong hệ thống</h2>
+          <p>Chấm màu thể hiện trạng thái Zero Trust hiện tại.</p>
+        </div>
+        <div class="section-heading__actions">
+          <span id="device-refresh-note">Tự làm mới mỗi giây</span>
+          <button class="button button--primary" id="add-device-button">+ Thêm thiết bị</button>
+        </div>
+      </header>
+      <div class="device-grid" id="device-list">
+        <p class="empty-state">Đang tải danh sách thiết bị…</p>
+      </div>
+    </section>
+  </main>
+
+  <dialog class="modal" id="admin-login-dialog">
+    <form class="modal__card" id="admin-login-form">
+      <header class="modal__header"><div><h2>Xác thực quản trị</h2><p>Chỉ role admin được thay đổi thiết bị và policy. <a class="setup-link" href="/setup">Thiết lập mật khẩu lần đầu</a></p></div><button class="icon-button" type="button" data-close-dialog="admin-login-dialog">×</button></header>
+      <label class="form-field">Tên đăng nhập<input name="username" autocomplete="username" required></label>
+      <label class="form-field">Mật khẩu<input name="password" type="password" autocomplete="current-password" required></label>
+      <p class="form-message" id="admin-login-message"></p>
+      <footer class="modal__footer"><button class="button button--secondary" type="button" data-close-dialog="admin-login-dialog">Hủy</button><button class="button button--primary" type="submit">Đăng nhập quản trị</button></footer>
+    </form>
+  </dialog>
+
+  <dialog class="modal" id="enroll-device-dialog">
+    <form class="modal__card" id="enroll-device-form">
+      <header class="modal__header"><div><h2>Thêm thiết bị mới</h2><p>ZTAS sẽ tự sinh Device Key và gán policy ban đầu.</p></div><button class="icon-button" type="button" data-close-dialog="enroll-device-dialog">×</button></header>
+      <label class="form-field">Device ID<input name="device_id" placeholder="linux-client-01" pattern="[a-z0-9][a-z0-9-]{2,63}" required><small>Chỉ dùng chữ thường, số và dấu gạch ngang.</small></label>
+      <label class="form-field">Độ tin cậy<select name="trust_level" required><option value="1">Level 1 — Guest</option><option value="2">Level 2 — Basic</option><option value="3" selected>Level 3 — Managed</option><option value="4">Level 4 — Trusted</option><option value="5">Level 5 — Secure</option></select></label>
+      <label class="form-field">Vùng mạng<select name="location_id" required><option value="external-network">external-network</option><option value="vpn-network">vpn-network</option><option value="lab-network" selected>lab-network</option><option value="campus-network">campus-network</option><option value="secure-zone">secure-zone</option></select></label>
+      <p class="form-message" id="enroll-device-message"></p>
+      <footer class="modal__footer"><button class="button button--secondary" type="button" data-close-dialog="enroll-device-dialog">Hủy</button><button class="button button--primary" type="submit">Cấp phát thiết bị</button></footer>
+    </form>
+  </dialog>
+
+  <dialog class="modal" id="device-key-dialog">
+    <section class="modal__card">
+      <header class="modal__header"><div><h2>Device Key đã được cấp</h2><p>Sao chép hoặc tải tệp cấu hình ngay. Khóa này chỉ hiển thị một lần trên giao diện.</p></div></header>
+      <label class="form-field">Device Key<input id="issued-device-key" readonly></label>
+      <div class="credential-actions"><button class="button button--secondary" id="copy-device-key">Sao chép key</button><button class="button button--secondary" id="download-device-env">Tải tệp .env</button></div>
+      <footer class="modal__footer"><button class="button button--primary" type="button" data-close-dialog="device-key-dialog">Đã lưu khóa</button></footer>
+    </section>
+  </dialog>
+
+  <dialog class="modal" id="revoke-device-dialog">
+    <section class="modal__card">
+      <header class="modal__header"><div><h2>Thu hồi thiết bị</h2><p id="revoke-device-text"></p></div><button class="icon-button" type="button" data-close-dialog="revoke-device-dialog">×</button></header>
+      <div class="warning-box">Khóa định danh sẽ bị vô hiệu hóa ngay. Audit log được giữ lại và thiết bị chuyển sang trạng thái chưa xác định.</div>
+      <p class="form-message" id="revoke-device-message"></p>
+      <footer class="modal__footer"><button class="button button--secondary" type="button" data-close-dialog="revoke-device-dialog">Hủy</button><button class="button button--danger" id="confirm-revoke-device">Thu hồi thiết bị</button></footer>
+    </section>
+  </dialog>
+</body>
+</html>

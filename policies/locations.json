@@ -1,0 +1,9 @@
+{
+  "locations": {
+    "external-network": { "level": 1 },
+    "vpn-network": { "level": 2 },
+    "lab-network": { "level": 3 },
+    "campus-network": { "level": 4 },
+    "secure-zone": { "level": 5 }
+  }
+}

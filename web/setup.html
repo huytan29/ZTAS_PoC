@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZTAS | Thiết lập quản trị</title>
+  <link rel="stylesheet" href="/assets/setup.css">
+  <script defer src="/assets/setup.js"></script>
+</head>
+<body>
+  <main class="setup-shell">
+    <section class="setup-card">
+      <div class="setup-brand"><span>◆</span>ZTAS Security Console</div>
+      <h1>Thiết lập tài khoản quản trị</h1>
+      <p class="setup-intro">Đây là bước thiết lập lần đầu cho PoC. Bạn tự đặt mật khẩu cho user <strong>admin</strong>; hệ thống chỉ lưu PBKDF2 hash, không lưu mật khẩu gốc.</p>
+      <form id="setup-form">
+        <label>Mật khẩu mới<input name="password" type="password" autocomplete="new-password" minlength="1" required></label>
+        <label>Xác nhận mật khẩu<input name="confirmation" type="password" autocomplete="new-password" minlength="1" required></label>
+        <p class="password-note">Ít nhất 1 ký tự. Không chia sẻ mật khẩu trong chat hoặc commit vào Git.</p>
+        <p class="message" id="setup-message"></p>
+        <button id="setup-submit" type="submit">Thiết lập mật khẩu admin</button>
+      </form>
+      <p class="footer-note">Sau khi hoàn tất, quay lại Dashboard và dùng admin để quản lý thiết bị.</p>
+    </section>
+  </main>
+</body>
+</html>

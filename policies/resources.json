@@ -1,0 +1,39 @@
+{
+  "resources": {
+    "public_document": {
+      "level": 1,
+      "min_role_level": 1,
+      "min_device_trust": 1,
+      "min_location_level": 1,
+      "min_auth_level": 1
+    },
+    "internal_document": {
+      "level": 2,
+      "min_role_level": 2,
+      "min_device_trust": 2,
+      "min_location_level": 2,
+      "min_auth_level": 1
+    },
+    "confidential_document": {
+      "level": 3,
+      "min_role_level": 3,
+      "min_device_trust": 3,
+      "min_location_level": 2,
+      "min_auth_level": 2
+    },
+    "secret_document": {
+      "level": 4,
+      "min_role_level": 4,
+      "min_device_trust": 4,
+      "min_location_level": 3,
+      "min_auth_level": 3
+    },
+    "restricted_document": {
+      "level": 5,
+      "min_role_level": 5,
+      "min_device_trust": 5,
+      "min_location_level": 4,
+      "min_auth_level": 5
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "levels": [
+    {
+      "auth_level": 2,
+      "code_hash": "DAN_HASH_MFA_LEVEL_2_VAO_DAY"
+    },
+    {
+      "auth_level": 3,
+      "code_hash": "DAN_HASH_MFA_LEVEL_3_VAO_DAY"
+    },
+    {
+      "auth_level": 4,
+      "code_hash": "DAN_HASH_MFA_LEVEL_4_VAO_DAY"
+    },
+    {
+      "auth_level": 5,
+      "code_hash": "DAN_HASH_MFA_LEVEL_5_VAO_DAY"
+    }
+  ]
+}

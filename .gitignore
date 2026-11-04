@@ -1,0 +1,4 @@
+build/
+data/audit.jsonl
+data/device_credentials.json
+runtime/

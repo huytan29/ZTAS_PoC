@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZTAS | Nhật ký an ninh</title>
+  <link rel="stylesheet" href="/assets/common.css">
+  <link rel="stylesheet" href="/assets/logs.css">
+  <script defer src="/assets/logs.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar__content">
+      <a class="brand" href="/dashboard">
+        <span class="brand__mark">◆</span>
+        <span>ZTAS Security Console</span>
+      </a>
+      <nav class="navigation" aria-label="Điều hướng chính">
+        <a class="navigation__link" href="/dashboard">Thiết bị</a>
+        <a class="navigation__link navigation__link--active" href="/logs">Nhật ký</a>
+        <span class="service-status" id="connection-status">
+          <i class="status-dot"></i>Đang kết nối
+        </span>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page-container">
+    <section class="page-heading">
+      <div>
+        <h1>Nhật ký an ninh</h1>
+        <p>Theo dõi cấp phát, xác minh thiết bị, quyết định policy và MFA.</p>
+      </div>
+      <time class="last-updated" id="last-updated">Chưa có dữ liệu</time>
+    </section>
+
+    <section class="metric-grid metric-grid--logs" aria-label="Tổng quan nhật ký">
+      <article class="metric-card"><span class="metric-card__label">Tổng sự kiện</span><strong class="metric-card__value" id="total-events">0</strong></article>
+      <article class="metric-card metric-card--success"><span class="metric-card__label">Cho phép</span><strong class="metric-card__value" id="permit-events">0</strong></article>
+      <article class="metric-card metric-card--danger"><span class="metric-card__label">Từ chối / lỗi</span><strong class="metric-card__value" id="deny-events">0</strong></article>
+      <article class="metric-card metric-card--warning"><span class="metric-card__label">Yêu cầu MFA</span><strong class="metric-card__value" id="step-up-events">0</strong></article>
+    </section>
+
+    <section class="panel log-panel">
+      <header class="log-panel__header">
+        <div>
+          <h2>Dòng sự kiện</h2>
+          <p>Tự làm mới mỗi giây từ file audit JSONL.</p>
+        </div>
+        <div class="log-filter" role="group" aria-label="Lọc nhật ký">
+          <button class="log-filter__button log-filter__button--active" data-filter="all">Tất cả</button>
+          <button class="log-filter__button" data-filter="access">Truy cập</button>
+          <button class="log-filter__button" data-filter="device">Thiết bị</button>
+          <button class="log-filter__button" data-filter="mfa">MFA</button>
+        </div>
+      </header>
+      <div class="log-list" id="log-list">
+        <p class="empty-state">Đang tải nhật ký…</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

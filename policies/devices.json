@@ -1,0 +1,34 @@
+{
+  "devices": {
+    "disabled-device-01": {
+      "location_id": "external-network",
+      "registered": false,
+      "trust_level": 1
+    },
+    "guest-laptop-01": {
+      "location_id": "external-network",
+      "registered": true,
+      "trust_level": 1
+    },
+    "macbook-lab-01": {
+      "location_id": "lab-network",
+      "registered": true,
+      "trust_level": 4
+    },
+    "secure-workstation-01": {
+      "location_id": "secure-zone",
+      "registered": true,
+      "trust_level": 5
+    },
+    "ubuntu-vm-01": {
+      "location_id": "lab-network",
+      "registered": false,
+      "trust_level": 3
+    },
+    "windows-vm-02": {
+      "location_id": "external-network",
+      "registered": true,
+      "trust_level": 2
+    }
+  }
+}

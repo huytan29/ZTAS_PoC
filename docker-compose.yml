@@ -1,0 +1,15 @@
+services:
+  opa:
+    image: openpolicyagent/opa:1.5.1-static
+    command:
+      - run
+      - --server
+      - --watch
+      - --addr=0.0.0.0:8181
+      - --set=decision_logs.console=true
+      - /policies
+    ports:
+      - "127.0.0.1:8181:8181"
+    volumes:
+      - ./policies:/policies:ro
+    restart: unless-stopped
