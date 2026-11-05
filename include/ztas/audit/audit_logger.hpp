@@ -7,7 +7,8 @@
 
 class AuditLogger {
 public:
-    explicit AuditLogger(std::string file_path);
+    // Moi ngay mot file JSONL: <log_directory>/YYYY-MM-DD.jsonl
+    explicit AuditLogger(std::string log_directory);
 
     void write(const nlohmann::json& event) const;
 
@@ -16,5 +17,5 @@ public:
     ) const;
 
 private:
-    std::string file_path_;
+    std::string log_directory_;
 };

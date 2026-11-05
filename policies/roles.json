@@ -3,7 +3,7 @@
     "guest": { "level": 1 },
     "employee": { "level": 2 },
     "manager": { "level": 3 },
-    "security": { "level": 4 },
+    "engineer": { "level": 4 },
     "admin": { "level": 5 }
   }
 }

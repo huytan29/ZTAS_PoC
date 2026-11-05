@@ -71,6 +71,8 @@ body {
 
 .navigation__link:hover { color: #fff; background: #ffffff12; }
 .navigation__link--active { color: #fff; background: #ffffff1c; }
+.navigation__logout { cursor:pointer; padding:7px 10px; border:1px solid #ffffff3b; border-radius:7px; background:transparent; color:#d9e4f3; font:inherit; font-size:12px; font-weight:650; white-space:nowrap; }
+.navigation__logout:hover { background:#ffffff14; color:#fff; }
 
 .service-status {
   margin-left: 10px;

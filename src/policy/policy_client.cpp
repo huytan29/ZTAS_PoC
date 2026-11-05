@@ -21,7 +21,9 @@ std::optional<AccessDecision> PolicyClient::decide(
             {"subject", {
                 {"username", request.subject.username},
                 {"role", request.subject.role},
-                {"auth_level", request.subject.auth_level}
+                {"auth_level", request.subject.auth_level},
+                {"allowed_device_ids", request.subject.allowed_device_ids},
+                {"account_expires_at", request.subject.account_expires_at}
             }},
             {"device", {
                 {"id", request.device_id},

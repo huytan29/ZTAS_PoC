@@ -45,6 +45,26 @@ device_key_verified if {
     input.device.key_verified == true
 }
 
+# Tai khoan thuong co expires_at = 0. Guest nhan expires_at luc dang nhap,
+# vi vay token guest tu mat hieu luc sau thoi gian tam cap quyen.
+account_active if {
+    input.subject.account_expires_at == 0
+}
+
+account_active if {
+    input.subject.account_expires_at > time.now_ns() / 1000000000
+}
+
+# Moi tai khoan chi dung duoc tren thiet bi da gan trong users.json.
+# "*" duoc danh rieng cho admin cua moi truong PoC.
+account_device_bound if {
+    input.subject.allowed_device_ids[_] == "*"
+}
+
+account_device_bound if {
+    input.subject.allowed_device_ids[_] == input.device.id
+}
+
 location_matches_device if {
     data.devices[input.device.id].location_id ==
         input.context.location_id
@@ -151,6 +171,33 @@ decision := output(
 
 decision := output(
     "DENY",
+    "ZTAS-1005",
+    "ACCOUNT_EXPIRED",
+    "high",
+    1
+) if {
+    valid_context
+    device_registered
+    device_key_verified
+    not account_active
+}
+
+decision := output(
+    "DENY",
+    "ZTAS-1006",
+    "ACCOUNT_DEVICE_BINDING_FAILED",
+    "high",
+    1
+) if {
+    valid_context
+    device_registered
+    device_key_verified
+    account_active
+    not account_device_bound
+}
+
+decision := output(
+    "DENY",
     "ZTAS-2004",
     "LOCATION_NOT_ALLOWED_FOR_DEVICE",
     "high",
@@ -159,6 +206,8 @@ decision := output(
     valid_context
     device_registered
     device_key_verified
+    account_active
+    account_device_bound
     not location_matches_device
 }
 
@@ -172,6 +221,8 @@ decision := output(
     valid_context
     device_registered
     device_key_verified
+    account_active
+    account_device_bound
     location_matches_device
     not role_sufficient
 }
@@ -186,6 +237,8 @@ decision := output(
     valid_context
     device_registered
     device_key_verified
+    account_active
+    account_device_bound
     location_matches_device
     role_sufficient
     not device_sufficient
@@ -201,6 +254,8 @@ decision := output(
     valid_context
     device_registered
     device_key_verified
+    account_active
+    account_device_bound
     location_matches_device
     role_sufficient
     device_sufficient
@@ -217,6 +272,8 @@ decision := output(
     valid_context
     device_registered
     device_key_verified
+    account_active
+    account_device_bound
     location_matches_device
     role_sufficient
     device_sufficient
@@ -234,6 +291,8 @@ decision := output(
     valid_context
     device_registered
     device_key_verified
+    account_active
+    account_device_bound
     location_matches_device
     role_sufficient
     device_sufficient

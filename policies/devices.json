@@ -27,7 +27,7 @@
     },
     "windows-vm-02": {
       "location_id": "external-network",
-      "registered": true,
+      "registered": false,
       "trust_level": 2
     }
   }

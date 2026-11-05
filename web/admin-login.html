@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZTAS | Đăng nhập quản trị</title>
+  <link rel="stylesheet" href="/assets/admin-login.css">
+  <script defer src="/assets/admin-login.js"></script>
+</head>
+<body>
+  <main class="login-shell">
+    <section class="login-card" aria-labelledby="login-title">
+      <div class="login-brand"><span>◆</span>ZTAS Security Console</div>
+      <p class="eyebrow">KHU VỰC QUẢN TRỊ</p>
+      <h1 id="login-title">Đăng nhập quản trị</h1>
+      <p class="login-intro">Dashboard thiết bị, log an ninh và thao tác cấp phát chỉ dành cho quản trị viên.</p>
+
+      <form id="admin-login-form">
+        <label>Tên đăng nhập
+          <input name="username" autocomplete="username" value="admin" required autofocus>
+        </label>
+        <label>Mật khẩu
+          <input name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <p class="message" id="login-message" role="alert"></p>
+        <button type="submit">Đăng nhập vào Dashboard</button>
+      </form>
+
+      <p class="login-note">PoC mặc định: <code>admin</code> / <code>admin</code>. Hãy đổi trước khi dùng ngoài môi trường demo.</p>
+    </section>
+  </main>
+</body>
+</html>

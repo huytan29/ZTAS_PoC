@@ -227,21 +227,42 @@ void send_text_file(
 std::optional<std::string> read_bearer_token(
     const httplib::Request& request
 ) {
-    if (!request.has_header("Authorization")) {
+    if (request.has_header("Authorization")) {
+        const std::string header =
+            request.get_header_value("Authorization");
+
+        constexpr std::string_view prefix = "Bearer ";
+
+        if (header.rfind(prefix, 0) == 0 &&
+            header.size() > prefix.size()) {
+            return header.substr(prefix.size());
+        }
+    }
+
+    if (!request.has_header("Cookie")) {
         return std::nullopt;
     }
 
-    const std::string header =
-        request.get_header_value("Authorization");
+    std::stringstream cookies(request.get_header_value("Cookie"));
+    std::string cookie;
 
-    constexpr std::string_view prefix = "Bearer ";
+    while (std::getline(cookies, cookie, ';')) {
+        const auto equal = cookie.find('=');
+        if (equal == std::string::npos) {
+            continue;
+        }
 
-    if (header.rfind(prefix, 0) != 0 ||
-        header.size() == prefix.size()) {
-        return std::nullopt;
+        std::string name = cookie.substr(0, equal);
+        std::string value = cookie.substr(equal + 1);
+        name.erase(0, name.find_first_not_of(" \t"));
+        value.erase(0, value.find_first_not_of(" \t"));
+
+        if (name == "ZTAS_ADMIN_TOKEN" && !value.empty()) {
+            return value;
+        }
     }
 
-    return header.substr(prefix.size());
+    return std::nullopt;
 }
 
 std::optional<AccessSubject> authenticate_request(
@@ -263,6 +284,18 @@ std::optional<AccessSubject> authenticate_request(
     }
 
     return subject;
+}
+
+bool has_admin_session(
+    const httplib::Request& request,
+    const AuthService& auth_service
+) {
+    const auto token = read_bearer_token(request);
+    const auto subject = token.has_value()
+        ? auth_service.verify_token(*token)
+        : std::nullopt;
+
+    return subject.has_value() && subject->role == "admin";
 }
 
 std::optional<AccessSubject> authenticate_admin_request(
@@ -413,8 +446,8 @@ int main() {
     const std::string users_file =
         env_or_default("USERS_FILE", "data/users.json");
 
-    const std::string audit_log_file =
-        env_or_default("AUDIT_LOG_FILE", "data/audit.jsonl");
+    const std::string audit_log_directory =
+        env_or_default("AUDIT_LOG_DIRECTORY", "data/logs");
 
     const std::string device_credentials_file =
         env_or_default(
@@ -430,6 +463,9 @@ int main() {
 
     const std::string setup_file =
         env_or_default("SETUP_FILE", "web/setup.html");
+
+    const std::string admin_login_file =
+        env_or_default("ADMIN_LOGIN_FILE", "web/admin-login.html");
 
     const std::string devices_policy_file =
         env_or_default("DEVICES_POLICY_FILE", "policies/devices.json");
@@ -461,7 +497,7 @@ int main() {
     );
 
     const PolicyClient policy_client(opa_host);
-    const AuditLogger audit_logger(audit_log_file);
+    const AuditLogger audit_logger(audit_log_directory);
     const DeviceRegistry device_registry(device_credentials_file);
     const DeviceManagementService device_management_service(
         devices_policy_file,
@@ -489,19 +525,57 @@ int main() {
         });
     });
 
-    // Day la man hinh quan sat local cho PoC. Khi dua vao moi truong that,
-    // endpoint nay phai duoc bao ve boi role operator qua Nginx/IdP.
-    server.Get("/dashboard", [&dashboard_file](
-        const httplib::Request&,
+    server.Get("/", [](const httplib::Request&, httplib::Response& response) {
+        response.set_redirect("/dashboard");
+    });
+
+    server.Get("/admin/login", [
+        &auth_service,
+        &admin_login_file
+    ](
+        const httplib::Request& request,
         httplib::Response& response
     ) {
+        const auto token = read_bearer_token(request);
+        const auto subject = token.has_value()
+            ? auth_service.verify_token(*token)
+            : std::nullopt;
+
+        if (subject.has_value() && subject->role == "admin") {
+            response.set_redirect("/dashboard");
+            return;
+        }
+
+        send_text_file(
+            response, admin_login_file, "text/html; charset=utf-8"
+        );
+    });
+
+    server.Get("/dashboard", [
+        &auth_service,
+        &dashboard_file
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        if (!has_admin_session(request, auth_service)) {
+            response.set_redirect("/admin/login?next=/dashboard");
+            return;
+        }
         send_text_file(response, dashboard_file, "text/html; charset=utf-8");
     });
 
-    server.Get("/logs", [&logs_file](
-        const httplib::Request&,
+    server.Get("/logs", [
+        &auth_service,
+        &logs_file
+    ](
+        const httplib::Request& request,
         httplib::Response& response
     ) {
+        if (!has_admin_session(request, auth_service)) {
+            response.set_redirect("/admin/login?next=/logs");
+            return;
+        }
         send_text_file(response, logs_file, "text/html; charset=utf-8");
     });
 
@@ -578,6 +652,17 @@ int main() {
         );
     });
 
+    server.Get("/assets/admin-login.css", [&web_assets_directory](
+        const httplib::Request&,
+        httplib::Response& response
+    ) {
+        send_text_file(
+            response,
+            web_assets_directory + "/admin-login.css",
+            "text/css; charset=utf-8"
+        );
+    });
+
     server.Get("/assets/setup.js", [&web_assets_directory](
         const httplib::Request&,
         httplib::Response& response
@@ -589,10 +674,26 @@ int main() {
         );
     });
 
-    server.Get("/api/audit", [&audit_logger](
+    server.Get("/assets/admin-login.js", [&web_assets_directory](
+        const httplib::Request&,
+        httplib::Response& response
+    ) {
+        send_text_file(
+            response,
+            web_assets_directory + "/admin-login.js",
+            "application/javascript; charset=utf-8"
+        );
+    });
+
+    server.Get("/api/audit", [&auth_service, &audit_logger](
         const httplib::Request& request,
         httplib::Response& response
     ) {
+        const auto admin =
+            authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) {
+            return;
+        }
         std::size_t limit = 200;
 
         if (request.has_param("limit")) {
@@ -704,12 +805,18 @@ int main() {
     });
 
     server.Get("/api/devices", [
+        &auth_service,
         &devices_policy_file,
         &audit_logger
     ](
-        const httplib::Request&,
+        const httplib::Request& request,
         httplib::Response& response
     ) {
+        const auto admin =
+            authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) {
+            return;
+        }
         const auto policy_data = read_json_file(devices_policy_file);
         if (!policy_data.has_value()) {
             send_json(response, 500, {
@@ -877,8 +984,21 @@ int main() {
                 {"auth_level", subject->auth_level}
             });
 
+            const std::string access_token =
+                auth_service.issue_token(*subject);
+
+            // Cookie HttpOnly cho man hinh quan tri. API van co the nhan
+            // Authorization: Bearer de phuc vu client/CLI cua PoC.
+            if (subject->role == "admin") {
+                response.set_header(
+                    "Set-Cookie",
+                    "ZTAS_ADMIN_TOKEN=" + access_token +
+                        "; Path=/; Max-Age=900; HttpOnly; SameSite=Strict"
+                );
+            }
+
             send_json(response, 200, {
-                {"access_token", auth_service.issue_token(*subject)},
+                {"access_token", access_token},
                 {"token_type", "Bearer"},
                 {"expires_in", 900},
                 {"subject", {
@@ -892,6 +1012,17 @@ int main() {
                 {"error", "INVALID_JSON"}
             });
         }
+    });
+
+    server.Post("/api/logout", [](
+        const httplib::Request&,
+        httplib::Response& response
+    ) {
+        response.set_header(
+            "Set-Cookie",
+            "ZTAS_ADMIN_TOKEN=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"
+        );
+        send_json(response, 200, {{"message", "Da dang xuat"}});
     });
 
     server.Post("/api/step-up", [

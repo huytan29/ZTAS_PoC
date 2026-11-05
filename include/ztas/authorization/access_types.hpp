@@ -7,6 +7,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 
 // Thông tin người dùng lấy từ token đã được xác thực
@@ -14,6 +15,10 @@ struct AccessSubject{
     std::string username;
     std::string role;
     int auth_level = 1;
+    // Danh sach thiet bi ma tai khoan duoc gan. "*" chi dung cho admin PoC.
+    std::vector<std::string> allowed_device_ids;
+    // 0 la tai khoan/phiên khong het han; Unix epoch > 0 la thoi diem het han.
+    long long account_expires_at = 0;
 };
 
 // Tài nguyên được bảo vệ trong hệ thống
@@ -60,7 +65,7 @@ struct AccessDecision{
 /*
 Ví dụ:
 AccessRequest request{
-    {"tan", "employee", 1},
+    {"tan", "employee", 1, {"macbook-lab-01"}, 0},
     "macbook-lab-01",
     "lab-network",
     true,

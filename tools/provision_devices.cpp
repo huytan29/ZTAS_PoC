@@ -4,10 +4,13 @@
 #include <openssl/rand.h>
 
 #include <chrono>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <system_error>
@@ -142,6 +145,19 @@ void append_audit_event(const fs::path& path, json event) {
     }
 }
 
+fs::path daily_audit_path(const fs::path& directory) {
+    const std::time_t now = std::time(nullptr);
+    std::tm local_time{};
+#ifdef _WIN32
+    localtime_s(&local_time, &now);
+#else
+    localtime_r(&now, &local_time);
+#endif
+    std::ostringstream filename;
+    filename << std::put_time(&local_time, "%Y-%m-%d") << ".jsonl";
+    return directory / filename.str();
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -156,8 +172,9 @@ int main(int argc, char* argv[]) {
         const fs::path policy_path = argv[1];
         const fs::path credentials_path = argv[2];
         const fs::path environment_directory = argv[3];
-        const fs::path audit_path =
-            credentials_path.parent_path() / "audit.jsonl";
+        const fs::path audit_path = daily_audit_path(
+            credentials_path.parent_path() / "logs"
+        );
 
         const json policy = read_json_file(policy_path);
         const auto& policy_devices = policy.at("devices");
@@ -175,6 +192,7 @@ int main(int argc, char* argv[]) {
         }
 
         fs::create_directories(credentials_path.parent_path());
+        fs::create_directories(audit_path.parent_path());
         fs::create_directories(environment_directory);
 
         append_audit_event(audit_path, {

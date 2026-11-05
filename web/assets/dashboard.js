@@ -343,5 +343,12 @@ document.querySelector("#device-key-dialog").addEventListener("close", () => {
   document.querySelector("#copy-device-key").textContent = "Sao chép key";
 });
 
+document.querySelector("#logout-button").addEventListener("click", async () => {
+  await fetch("/api/logout", { method: "POST" }).catch(() => undefined);
+  adminToken = "";
+  sessionStorage.removeItem("ztas_admin_token");
+  location.assign("/admin/login");
+});
+
 refreshDashboard();
 setInterval(refreshDashboard, 1000);

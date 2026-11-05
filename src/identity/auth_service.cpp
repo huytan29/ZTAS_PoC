@@ -315,6 +315,12 @@ std::string sign(
     );
 }
 
+long long current_epoch() {
+    return std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()
+    ).count();
+}
+
 } // namespace
 
 AuthService::AuthService(
@@ -328,8 +334,10 @@ std::optional<AccessSubject> AuthService::authenticate(
     const std::string& password
 ) const {
     try {
+        std::lock_guard<std::mutex> lock(mutex_);
         std::ifstream file(users_file_);
         const json users_data = json::parse(file);
+        const long long now = current_epoch();
 
         for (const auto& user : users_data.at("users")) {
             if (user.value("username", "") == username &&
@@ -337,10 +345,34 @@ std::optional<AccessSubject> AuthService::authenticate(
                     password,
                     user.value("password_hash", "")
                 )) {
+                const long long fixed_expires_at =
+                    user.value("expires_at", 0LL);
+
+                if (fixed_expires_at > 0 && fixed_expires_at <= now) {
+                    return std::nullopt;
+                }
+
+                long long effective_expires_at = fixed_expires_at;
+                const int temporary_session_minutes =
+                    user.value("temporary_session_minutes", 0);
+
+                if (temporary_session_minutes > 0) {
+                    const long long temporary_expiry = now +
+                        static_cast<long long>(temporary_session_minutes) * 60;
+                    effective_expires_at = fixed_expires_at > 0
+                        ? std::min(fixed_expires_at, temporary_expiry)
+                        : temporary_expiry;
+                }
+
                 return AccessSubject{
                     username,
                     user.value("role", ""),
-                    1
+                    1,
+                    user.value(
+                        "allowed_device_ids",
+                        std::vector<std::string>{}
+                    ),
+                    effective_expires_at
                 };
             }
         }
@@ -433,18 +465,19 @@ PasswordSetupResult AuthService::set_initial_admin_password(
 std::string AuthService::issue_token(
     const AccessSubject& subject
 ) const {
-    const auto now =
-        std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now()
-                .time_since_epoch()
-        ).count();
+    const long long now = current_epoch();
+    const long long token_expiry = subject.account_expires_at > 0
+        ? std::min(now + 900, subject.account_expires_at)
+        : now + 900;
 
     const json payload = {
         {"sub", subject.username},
         {"role", subject.role},
         {"auth_level", subject.auth_level},
+        {"allowed_device_ids", subject.allowed_device_ids},
+        {"account_expires_at", subject.account_expires_at},
         {"iat", now},
-        {"exp", now + 900}
+        {"exp", token_expiry}
     };
 
     const std::string encoded_payload =
@@ -491,16 +524,16 @@ std::optional<AccessSubject> AuthService::verify_token(
     try {
         const json payload = json::parse(*decoded);
 
-        const auto now =
-            std::chrono::duration_cast<std::chrono::seconds>(
-                std::chrono::system_clock::now()
-                    .time_since_epoch()
-            ).count();
+        const long long now = current_epoch();
 
         const int auth_level =
             payload.value("auth_level", 0);
 
+        const long long account_expires_at =
+            payload.value("account_expires_at", 0LL);
+
         if (payload.value("exp", 0LL) < now ||
+            (account_expires_at > 0 && account_expires_at <= now) ||
             auth_level < 1 ||
             auth_level > 5) {
             return std::nullopt;
@@ -519,7 +552,12 @@ std::optional<AccessSubject> AuthService::verify_token(
         return AccessSubject{
             username,
             role,
-            auth_level
+            auth_level,
+            payload.value(
+                "allowed_device_ids",
+                std::vector<std::string>{}
+            ),
+            account_expires_at
         };
     } catch (const std::exception&) {
         return std::nullopt;

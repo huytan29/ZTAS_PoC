@@ -101,10 +101,10 @@ demo: run
 	fi; \
 	open http://127.0.0.1:8020/dashboard; \
 	echo "Dashboard da mo. Nhan Ctrl+C chi dung man hinh log, ZTAS van chay nen."; \
-	tail -n 30 -f data/audit.jsonl
+	@log_file="data/logs/$$(date +%F).jsonl"; mkdir -p data/logs; touch "$$log_file"; tail -n 30 -f "$$log_file"
 
 logs:
-	@tail -n 30 -f data/audit.jsonl
+	@log_file="data/logs/$$(date +%F).jsonl"; mkdir -p data/logs; touch "$$log_file"; tail -n 30 -f "$$log_file"
 
 stop:
 	@if [[ -f runtime/ztas.pid ]] && kill -0 "$$(cat runtime/ztas.pid)" 2>/dev/null; then \
