@@ -12,9 +12,11 @@ add_executable(ztas
     src/identity/mfa_service.cpp
     src/device/device_registry.cpp
     src/device/device_management_service.cpp
+    src/device/device_discovery_service.cpp
     src/authorization/access_service.cpp
     src/policy/policy_client.cpp
     src/audit/audit_logger.cpp
+    src/data/secure_data_store.cpp
 )
 
 add_executable(secret_hash_tool
@@ -32,11 +34,13 @@ target_include_directories(ztas PRIVATE
 find_package(httplib CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
+find_package(SQLite3 REQUIRED)
 
 target_link_libraries(ztas PRIVATE
     httplib::httplib
     nlohmann_json::nlohmann_json
     OpenSSL::Crypto
+    SQLite3::SQLite3
 )
 
 target_link_libraries(secret_hash_tool PRIVATE

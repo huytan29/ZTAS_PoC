@@ -179,16 +179,19 @@ DeviceManagementService::DeviceManagementService(
     std::string devices_policy_file,
     std::string locations_policy_file,
     std::string credentials_file,
-    std::string device_environment_directory
+    std::string device_environment_directory,
+    std::string users_file
 ) : devices_policy_file_(std::move(devices_policy_file)),
     locations_policy_file_(std::move(locations_policy_file)),
     credentials_file_(std::move(credentials_file)),
-    device_environment_directory_(std::move(device_environment_directory)) {}
+    device_environment_directory_(std::move(device_environment_directory)),
+    users_file_(std::move(users_file)) {}
 
 DeviceOperationResult DeviceManagementService::enroll(
     const std::string& device_id,
     int trust_level,
-    const std::string& location_id
+    const std::string& location_id,
+    const std::string& assigned_username
 ) const {
     std::lock_guard<std::mutex> lock(mutex_);
 
@@ -203,6 +206,13 @@ DeviceOperationResult DeviceManagementService::enroll(
         return failure("INVALID_TRUST_LEVEL", "Trust level phai nam trong khoang 1-5");
     }
 
+    if (assigned_username.empty()) {
+        return failure(
+            "ASSIGNED_USER_REQUIRED",
+            "Can gan tai khoan cho thiet bi truoc khi cap phat"
+        );
+    }
+
     try {
         json devices_policy = read_json(devices_policy_file_);
         const json locations_policy = read_json(locations_policy_file_);
@@ -214,6 +224,22 @@ DeviceOperationResult DeviceManagementService::enroll(
 
         if (!devices_policy.contains("devices")) {
             devices_policy["devices"] = json::object();
+        }
+
+        json users_data = read_json(users_file_);
+        if (!users_data.contains("users") || !users_data["users"].is_array()) {
+            return failure("INVALID_USERS_STORE", "Kho nguoi dung khong dung dinh dang");
+        }
+
+        json* assigned_user = nullptr;
+        for (auto& user : users_data["users"]) {
+            if (user.value("username", "") == assigned_username) {
+                assigned_user = &user;
+                break;
+            }
+        }
+        if (assigned_user == nullptr) {
+            return failure("ASSIGNED_USER_NOT_FOUND", "Tai khoan duoc gan khong ton tai");
         }
 
         const bool exists = devices_policy["devices"].contains(device_id);
@@ -245,7 +271,24 @@ DeviceOperationResult DeviceManagementService::enroll(
             {"location_id", location_id}
         };
 
+        if (!assigned_user->contains("allowed_device_ids") ||
+            !(*assigned_user)["allowed_device_ids"].is_array()) {
+            (*assigned_user)["allowed_device_ids"] = json::array();
+        }
+
+        bool already_assigned = false;
+        for (const auto& allowed_id : (*assigned_user)["allowed_device_ids"]) {
+            already_assigned = allowed_id == device_id;
+            if (already_assigned) {
+                break;
+            }
+        }
+        if (!already_assigned) {
+            (*assigned_user)["allowed_device_ids"].push_back(device_id);
+        }
+
         write_json(credentials_file_, credentials);
+        write_json(users_file_, users_data);
         write_environment(
             fs::path(device_environment_directory_) / (device_id + ".env"),
             device_id,
@@ -318,5 +361,81 @@ DeviceOperationResult DeviceManagementService::revoke(
         };
     } catch (const std::exception& error) {
         return failure("DEVICE_REVOCATION_ERROR", error.what());
+    }
+}
+
+DeviceOperationResult DeviceManagementService::remove(
+    const std::string& device_id
+) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    if (!valid_device_id(device_id)) {
+        return failure("INVALID_DEVICE_ID", "Device ID khong hop le");
+    }
+
+    try {
+        json devices_policy = read_json(devices_policy_file_);
+        if (!devices_policy.contains("devices") ||
+            !devices_policy.at("devices").contains(device_id)) {
+            return failure("DEVICE_NOT_FOUND", "Khong tim thay thiet bi trong policy");
+        }
+
+        const json device = devices_policy["devices"][device_id];
+        devices_policy["devices"].erase(device_id);
+
+        json credentials = {
+            {"schema_version", 1},
+            {"devices", json::object()}
+        };
+        if (fs::exists(credentials_file_)) {
+            credentials = read_json(credentials_file_);
+            if (credentials.contains("devices")) {
+                credentials["devices"].erase(device_id);
+            }
+        }
+
+        // Xoa gan ket cu the cua user voi Device ID cu.
+        // Quyen "*" cua admin PoC van duoc giu nguyen.
+        if (fs::exists(users_file_)) {
+            json users_data = read_json(users_file_);
+            if (users_data.contains("users") && users_data["users"].is_array()) {
+                for (auto& user : users_data["users"]) {
+                    if (!user.contains("allowed_device_ids") ||
+                        !user["allowed_device_ids"].is_array()) {
+                        continue;
+                    }
+
+                    json retained = json::array();
+                    for (const auto& allowed_id : user["allowed_device_ids"]) {
+                        if (allowed_id != device_id) {
+                            retained.push_back(allowed_id);
+                        }
+                    }
+                    user["allowed_device_ids"] = retained;
+                }
+                write_json(users_file_, users_data);
+            }
+        }
+
+        write_json(credentials_file_, credentials);
+        write_json(devices_policy_file_, devices_policy);
+
+        std::error_code error;
+        fs::remove(
+            fs::path(device_environment_directory_) / (device_id + ".env"),
+            error
+        );
+
+        return {
+            true,
+            "DEVICE_DELETED",
+            "Da xoa vinh vien thiet bi khoi policy va thu hoi khoa dinh danh",
+            device_id,
+            "",
+            device.value("trust_level", 0),
+            device.value("location_id", "")
+        };
+    } catch (const std::exception& error) {
+        return failure("DEVICE_DELETION_ERROR", error.what());
     }
 }

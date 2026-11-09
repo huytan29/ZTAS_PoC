@@ -1,4 +1,14 @@
-const viewState = { filter: "all", fingerprint: "" };
+function localIsoDate() {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  return now.toISOString().slice(0, 10);
+}
+
+const dateInput = document.querySelector("#log-date");
+dateInput.value = localIsoDate();
+dateInput.max = localIsoDate();
+
+const viewState = { filter: "all", fingerprint: "", date: dateInput.value };
 
 const reasonText = {
   DEVICE_KEY_INVALID: "Khóa định danh thiết bị không hợp lệ",
@@ -28,6 +38,8 @@ const eventTitles = {
   DEVICE_ENROLLED: "Đã cấp phát thiết bị mới",
   DEVICE_REENROLLED: "Đã đăng ký lại thiết bị",
   DEVICE_REVOKED: "Đã thu hồi thiết bị",
+  DEVICE_DELETED: "Đã xoá vĩnh viễn thiết bị",
+  DEVICE_DISCOVERED: "Phát hiện thiết bị mới chờ phê duyệt",
   ADMIN_PASSWORD_CONFIGURED: "Đã thiết lập mật khẩu quản trị"
 };
 
@@ -141,7 +153,8 @@ function setConnection(isOnline) {
 
 async function refreshLogs() {
   try {
-    const response = await fetch("/api/audit?limit=200", { cache: "no-store" });
+    const query = new URLSearchParams({ limit: "200", date: viewState.date });
+    const response = await fetch(`/api/audit?${query}`, { cache: "no-store" });
     if (!response.ok) throw new Error("Không lấy được log");
 
     const data = await response.json();
@@ -170,6 +183,13 @@ document.querySelectorAll(".log-filter__button").forEach(button => {
     viewState.fingerprint = "";
     refreshLogs();
   });
+});
+
+dateInput.addEventListener("change", () => {
+  if (!dateInput.value) return;
+  viewState.date = dateInput.value;
+  viewState.fingerprint = "";
+  refreshLogs();
 });
 
 document.querySelector("#logout-button").addEventListener("click", async () => {

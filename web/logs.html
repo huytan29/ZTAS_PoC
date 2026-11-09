@@ -13,7 +13,7 @@
     <div class="topbar__content">
       <a class="brand" href="/dashboard">
         <span class="brand__mark">◆</span>
-        <span>ZTAS Security Console</span>
+        <span>PoC PTIT Security Console</span>
       </a>
       <nav class="navigation" aria-label="Điều hướng chính">
         <a class="navigation__link" href="/dashboard">Thiết bị</a>
@@ -46,13 +46,16 @@
       <header class="log-panel__header">
         <div>
           <h2>Dòng sự kiện</h2>
-          <p>Tự làm mới mỗi giây từ file audit JSONL.</p>
+          <p>Chỉ hiển thị log của ngày đang chọn; log ngày cũ được lưu XML trên máy.</p>
         </div>
-        <div class="log-filter" role="group" aria-label="Lọc nhật ký">
-          <button class="log-filter__button log-filter__button--active" data-filter="all">Tất cả</button>
-          <button class="log-filter__button" data-filter="access">Truy cập</button>
-          <button class="log-filter__button" data-filter="device">Thiết bị</button>
-          <button class="log-filter__button" data-filter="mfa">MFA</button>
+        <div class="log-controls">
+          <label class="log-day-picker">Ngày xem log<input id="log-date" type="date" required></label>
+          <div class="log-filter" role="group" aria-label="Lọc nhật ký">
+            <button class="log-filter__button log-filter__button--active" data-filter="all">Tất cả</button>
+            <button class="log-filter__button" data-filter="access">Truy cập</button>
+            <button class="log-filter__button" data-filter="device">Thiết bị</button>
+            <button class="log-filter__button" data-filter="mfa">MFA</button>
+          </div>
         </div>
       </header>
       <div class="log-list" id="log-list">

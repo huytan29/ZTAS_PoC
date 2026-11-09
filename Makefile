@@ -4,6 +4,8 @@ CPP_HTTPLIB_PREFIX := $(shell brew --prefix cpp-httplib 2>/dev/null)
 JSON_PREFIX := $(shell brew --prefix nlohmann-json 2>/dev/null)
 OPENSSL_PREFIX := $(shell brew --prefix openssl@3 2>/dev/null)
 CMAKE_PREFIXES := $(CPP_HTTPLIB_PREFIX);$(JSON_PREFIX);$(OPENSSL_PREFIX)
+POC_URL := http://poc-ptit.localhost:8020
+INTERNAL_ZTAS_URL := http://127.0.0.1:8020
 
 .PHONY: help configure build provision docker-ready opa-up opa-logs run demo logs stop down clean
 
@@ -80,28 +82,28 @@ run: provision opa-up runtime/ztas.env
 		echo "Da khoi dong lai ZTAS de nap phien ban moi."; \
 		sleep 0.5; \
 	fi; \
-	if curl -fsS http://127.0.0.1:8020/health >/dev/null 2>&1; then \
+	if curl -fsS $(INTERNAL_ZTAS_URL)/health >/dev/null 2>&1; then \
 		echo "ZTAS dang chay tren cong 8020 do mot tien trinh khac quan ly."; \
 	else \
 		set -a; source runtime/ztas.env; set +a; \
-		./build/ztas > runtime/ztas.stdout.log 2>&1 & \
+		( trap '' INT; exec nohup ./build/ztas > runtime/ztas.stdout.log 2>&1 < /dev/null ) & \
 		echo $$! > runtime/ztas.pid; \
 		echo "Da khoi dong ZTAS (PID $$(cat runtime/ztas.pid))."; \
 	fi
 
 demo: run
 	@set -e; \
-	for attempt in {1..10}; do \
-		if curl -fsS http://127.0.0.1:8020/health >/dev/null; then break; fi; \
+	for attempt in {1..30}; do \
+		if curl -fsS $(INTERNAL_ZTAS_URL)/health >/dev/null 2>&1; then break; fi; \
 		sleep 0.5; \
 	done; \
-	if ! curl -fsS http://127.0.0.1:8020/health >/dev/null; then \
+	if ! curl -fsS $(INTERNAL_ZTAS_URL)/health >/dev/null 2>&1; then \
 		echo "ZTAS khoi dong that bai. Xem runtime/ztas.stdout.log de biet loi."; \
 		exit 1; \
 	fi; \
-	open http://127.0.0.1:8020/dashboard; \
-	echo "Dashboard da mo. Nhan Ctrl+C chi dung man hinh log, ZTAS van chay nen."; \
-	@log_file="data/logs/$$(date +%F).jsonl"; mkdir -p data/logs; touch "$$log_file"; tail -n 30 -f "$$log_file"
+	open $(POC_URL)/dashboard; \
+	echo "Dashboard da mo. Nhan Ctrl+C de dung theo doi log; dung 'make stop' de dung ZTAS."; \
+	log_file="data/logs/$$(date +%F).jsonl"; mkdir -p data/logs; touch "$$log_file"; tail -n 30 -f "$$log_file"
 
 logs:
 	@log_file="data/logs/$$(date +%F).jsonl"; mkdir -p data/logs; touch "$$log_file"; tail -n 30 -f "$$log_file"

@@ -20,7 +20,9 @@ const orderByStatus = { STEP_UP: 0, UNIDENTIFIED: 1, IDENTIFIED: 2 };
 let adminToken = sessionStorage.getItem("ztas_admin_token") ?? "";
 let pendingAdminAction = null;
 let deviceToRevoke = null;
+let deviceToDelete = null;
 let issuedCredential = null;
+let assignableUsers = [];
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, character => ({
@@ -58,6 +60,16 @@ function updateText(id, value) {
   document.querySelector(id).textContent = value;
 }
 
+function assignedAccounts(device) {
+  const accounts = device.assigned_accounts ?? [];
+  if (!accounts.length) return '<span class="account-empty">Chưa gán</span>';
+
+  return accounts.map(account => `
+    <span class="account-chip" title="Role: ${escapeHtml(account.role)}${account.scope === "all" ? " · toàn hệ thống" : ""}">
+      ${escapeHtml(account.username)}<small>${escapeHtml(account.role)}${account.scope === "all" ? " · all" : ""}</small>
+    </span>`).join("");
+}
+
 function renderDeviceCards(devices) {
   const container = document.querySelector("#device-list");
 
@@ -66,37 +78,40 @@ function renderDeviceCards(devices) {
     return;
   }
 
-  const cards = devices
+  const rows = devices
     .slice()
     .sort((left, right) => orderByStatus[left.status] - orderByStatus[right.status])
     .map(device => {
       const info = statusInfo[device.status] ?? statusInfo.UNIDENTIFIED;
+      const dotClass = info.cardClass === "step-up"
+        ? "warning"
+        : info.cardClass === "unidentified" ? "danger" : "success";
 
       return `
-        <article class="device-card device-card--${info.cardClass}">
-          <div class="device-card__top">
-            <div class="device-card__id">
-              <i class="status-dot status-dot--${info.cardClass === "step-up" ? "warning" : info.cardClass === "unidentified" ? "danger" : "success"}"></i>
-              <span>${escapeHtml(device.id)}</span>
-            </div>
-            <span class="status-pill">${info.label}</span>
-          </div>
-          <p class="device-card__description">${info.description}</p>
-          <div class="device-facts">
-            <div><span>Vùng mạng</span><strong>${escapeHtml(device.location_id)}</strong></div>
-            <div><span>Độ tin cậy</span><strong>${escapeHtml(device.trust_level)}/5</strong></div>
-          </div>
-          <p class="device-card__last">${lastActivity(device)} · ${formatTime(device.last_seen)}</p>
-          <div class="device-card__actions">
+        <tr>
+          <td class="device-table__device"><i class="status-dot status-dot--${dotClass}"></i><strong>${escapeHtml(device.id)}</strong></td>
+          <td><span class="device-status device-status--${info.cardClass}">${info.label}</span></td>
+          <td><span class="device-zone">${escapeHtml(device.location_id)}</span></td>
+          <td><span class="trust-value">${escapeHtml(device.trust_level)}/5</span></td>
+          <td class="device-table__accounts">${assignedAccounts(device)}</td>
+          <td class="device-table__activity"><strong>${lastActivity(device)}</strong><span>${formatTime(device.last_seen)}</span></td>
+          <td class="device-table__actions">
             ${device.registered
               ? `<button class="button button--secondary button--small" data-revoke-device="${escapeHtml(device.id)}">Thu hồi</button>`
               : `<button class="button button--secondary button--small" data-reenroll-device="${escapeHtml(device.id)}">Đăng ký lại</button>`}
-          </div>
-        </article>`;
+            <button class="button button--danger-outline button--small" data-delete-device="${escapeHtml(device.id)}">Xoá</button>
+          </td>
+        </tr>`;
     })
     .join("");
 
-  container.innerHTML = cards;
+  container.innerHTML = `
+    <div class="device-table-wrap">
+      <table class="device-table">
+        <thead><tr><th>Thiết bị</th><th>Trạng thái Zero Trust</th><th>Vùng mạng</th><th>Độ tin cậy</th><th>Tài khoản được gán</th><th>Hoạt động gần nhất</th><th>Thao tác</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
   container.querySelectorAll("[data-revoke-device]").forEach(button => {
     button.addEventListener("click", () => {
       requireAdmin(() => openRevokeDialog(button.dataset.revokeDevice));
@@ -106,6 +121,12 @@ function renderDeviceCards(devices) {
   container.querySelectorAll("[data-reenroll-device]").forEach(button => {
     button.addEventListener("click", () => {
       requireAdmin(() => openEnrollDialog(button.dataset.reenrollDevice));
+    });
+  });
+
+  container.querySelectorAll("[data-delete-device]").forEach(button => {
+    button.addEventListener("click", () => {
+      requireAdmin(() => openDeleteDialog(button.dataset.deleteDevice));
     });
   });
 }
@@ -127,6 +148,26 @@ function updateDonut(summary) {
     #d7405a ${identifiedEnd}deg ${unidentifiedEnd}deg,
     #c17b00 ${unidentifiedEnd}deg 360deg
   )`;
+}
+
+function renderDataZones(zones) {
+  const container = document.querySelector("#data-zone-list");
+  if (!zones.length) {
+    container.innerHTML = '<p class="empty-state">Chưa có vùng dữ liệu trong CSDL.</p>';
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="data-zone-table">
+      <thead><tr><th>Vùng dữ liệu</th><th>Độ nhạy cảm</th><th>Số tài liệu</th><th>Mô tả</th></tr></thead>
+      <tbody>${zones.map(zone => `
+        <tr>
+          <td><strong>${escapeHtml(zone.name)}</strong><span class="zone-id">${escapeHtml(zone.id)}</span></td>
+          <td><span class="sensitivity sensitivity--${escapeHtml(zone.sensitivity)}">${escapeHtml(zone.sensitivity)}</span></td>
+          <td>${escapeHtml(zone.document_count)}</td>
+          <td class="data-zone-table__description">${escapeHtml(zone.description)}</td>
+        </tr>`).join("")}</tbody>
+    </table>`;
 }
 
 function renderDashboard(data) {
@@ -169,6 +210,18 @@ async function refreshDashboard() {
   }
 }
 
+async function refreshDataZones() {
+  try {
+    const response = await fetch("/api/data-zones", { cache: "no-store" });
+    if (!response.ok) throw new Error("Không lấy được vùng dữ liệu");
+    const data = await response.json();
+    renderDataZones(data.zones ?? []);
+  } catch {
+    document.querySelector("#data-zone-list").innerHTML =
+      '<p class="empty-state">Không thể tải vùng dữ liệu CSDL.</p>';
+  }
+}
+
 function showDialog(id) {
   document.querySelector(`#${id}`).showModal();
 }
@@ -195,13 +248,31 @@ function apiHeaders() {
   };
 }
 
-function openEnrollDialog(deviceId = "") {
+async function loadAssignableUsers() {
+  const selector = document.querySelector("#enroll-device-form select[name=assigned_username]");
+  try {
+    const response = await fetch("/api/users", { headers: apiHeaders() });
+    const data = await parseResponse(response);
+    assignableUsers = data.users ?? [];
+    selector.innerHTML = [
+      '<option value="">Chọn tài khoản</option>',
+      ...assignableUsers.map(user =>
+        `<option value="${escapeHtml(user.username)}">${escapeHtml(user.username)} — ${escapeHtml(user.role)}</option>`
+      )
+    ].join("");
+  } catch {
+    selector.innerHTML = '<option value="">Không tải được tài khoản</option>';
+  }
+}
+
+async function openEnrollDialog(deviceId = "") {
   const form = document.querySelector("#enroll-device-form");
   form.reset();
   form.elements.device_id.value = deviceId;
   form.elements.trust_level.value = "3";
   form.elements.location_id.value = "lab-network";
   document.querySelector("#enroll-device-message").textContent = "";
+  await loadAssignableUsers();
   showDialog("enroll-device-dialog");
 }
 
@@ -211,6 +282,14 @@ function openRevokeDialog(deviceId) {
     `Bạn sắp thu hồi ${deviceId}. Thiết bị sẽ không thể tiếp tục truy cập bằng khóa hiện tại.`;
   document.querySelector("#revoke-device-message").textContent = "";
   showDialog("revoke-device-dialog");
+}
+
+function openDeleteDialog(deviceId) {
+  deviceToDelete = deviceId;
+  document.querySelector("#delete-device-text").textContent =
+    `Bạn sắp xoá vĩnh viễn ${deviceId} khỏi hệ thống PoC.`;
+  document.querySelector("#delete-device-message").textContent = "";
+  showDialog("delete-device-dialog");
 }
 
 async function parseResponse(response) {
@@ -276,7 +355,8 @@ document.querySelector("#enroll-device-form").addEventListener("submit", async e
       body: JSON.stringify({
         device_id: form.elements.device_id.value.trim(),
         trust_level: Number(form.elements.trust_level.value),
-        location_id: form.elements.location_id.value
+        location_id: form.elements.location_id.value,
+        assigned_username: form.elements.assigned_username.value
       })
     });
     const data = await parseResponse(response);
@@ -306,6 +386,25 @@ document.querySelector("#confirm-revoke-device").addEventListener("click", async
     await parseResponse(response);
     closeDialog("revoke-device-dialog");
     deviceToRevoke = null;
+    refreshDashboard();
+  } catch (error) {
+    message.textContent = error.message;
+  }
+});
+
+document.querySelector("#confirm-delete-device").addEventListener("click", async () => {
+  const message = document.querySelector("#delete-device-message");
+  if (!deviceToDelete) return;
+  message.textContent = "Đang xoá vĩnh viễn thiết bị…";
+
+  try {
+    const response = await fetch(
+      `/api/devices/permanent?id=${encodeURIComponent(deviceToDelete)}`,
+      { method: "DELETE", headers: apiHeaders() }
+    );
+    await parseResponse(response);
+    closeDialog("delete-device-dialog");
+    deviceToDelete = null;
     refreshDashboard();
   } catch (error) {
     message.textContent = error.message;
@@ -351,4 +450,8 @@ document.querySelector("#logout-button").addEventListener("click", async () => {
 });
 
 refreshDashboard();
-setInterval(refreshDashboard, 1000);
+refreshDataZones();
+setInterval(() => {
+  refreshDashboard();
+  refreshDataZones();
+}, 1000);

@@ -1,5 +1,9 @@
 .metric-grid--logs { grid-template-columns: repeat(auto-fit, minmax(min(100%, 175px), 1fr)); }
 .log-panel__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 17px 20px; border-bottom: 1px solid var(--line); }
+.log-controls { display:flex; flex-wrap:wrap; align-items:end; justify-content:end; gap:10px; }
+.log-day-picker { display:grid; gap:4px; color:var(--muted); font-size:11px; font-weight:700; }
+.log-day-picker input { min-height:32px; padding:5px 8px; border:1px solid var(--line); border-radius:7px; background:#fff; color:var(--ink); font:inherit; }
+.log-day-picker input:focus { outline:2px solid #a9c8ff; border-color:var(--blue); }
 .log-filter { display: flex; flex-wrap: wrap; justify-content: end; gap: 5px; }
 .log-filter__button { cursor: pointer; padding: 7px 9px; border: 0; border-radius: 7px; background: transparent; color: #596b83; font: inherit; font-size: 12px; font-weight: 680; }
 .log-filter__button:hover { background: #f2f6fb; }
@@ -28,7 +32,7 @@
 
 @media (max-width: 700px) {
   .log-panel__header { align-items: start; flex-direction: column; }
-  .log-filter { justify-content: start; }
+  .log-controls,.log-filter { justify-content: start; }
 }
 
 @media (max-width: 560px) {

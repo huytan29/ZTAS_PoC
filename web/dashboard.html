@@ -13,7 +13,7 @@
     <div class="topbar__content">
       <a class="brand" href="/dashboard">
         <span class="brand__mark">◆</span>
-        <span>ZTAS Security Console</span>
+        <span>PoC PTIT Security Console</span>
       </a>
       <nav class="navigation" aria-label="Điều hướng chính">
         <a class="navigation__link navigation__link--active" href="/dashboard">Thiết bị</a>
@@ -97,6 +97,19 @@
       </article>
     </section>
 
+    <section class="data-zone-section">
+      <header class="section-heading">
+        <div>
+          <h2>Vùng dữ liệu trong CSDL</h2>
+          <p>CSDL SQLite chỉ được đọc sau khi ZTAS và OPA cho phép truy cập.</p>
+        </div>
+        <span class="database-badge">SQLite · nội bộ</span>
+      </header>
+      <div class="data-zone-table-wrap" id="data-zone-list">
+        <p class="empty-state">Đang tải cấu trúc vùng dữ liệu…</p>
+      </div>
+    </section>
+
     <section class="device-section">
       <header class="section-heading">
         <div>
@@ -130,6 +143,7 @@
       <label class="form-field">Device ID<input name="device_id" placeholder="linux-client-01" pattern="[a-z0-9][a-z0-9-]{2,63}" required><small>Chỉ dùng chữ thường, số và dấu gạch ngang.</small></label>
       <label class="form-field">Độ tin cậy<select name="trust_level" required><option value="1">Level 1 — Guest</option><option value="2">Level 2 — Basic</option><option value="3" selected>Level 3 — Managed</option><option value="4">Level 4 — Trusted</option><option value="5">Level 5 — Secure</option></select></label>
       <label class="form-field">Vùng mạng<select name="location_id" required><option value="external-network">external-network</option><option value="vpn-network">vpn-network</option><option value="lab-network" selected>lab-network</option><option value="campus-network">campus-network</option><option value="secure-zone">secure-zone</option></select></label>
+      <label class="form-field">Tài khoản được gán<select name="assigned_username" required><option value="">Đang tải tài khoản…</option></select><small>Thiết bị chỉ xuất hiện Dashboard sau khi gán tài khoản.</small></label>
       <p class="form-message" id="enroll-device-message"></p>
       <footer class="modal__footer"><button class="button button--secondary" type="button" data-close-dialog="enroll-device-dialog">Hủy</button><button class="button button--primary" type="submit">Cấp phát thiết bị</button></footer>
     </form>
@@ -150,6 +164,15 @@
       <div class="warning-box">Khóa định danh sẽ bị vô hiệu hóa ngay. Audit log được giữ lại và thiết bị chuyển sang trạng thái chưa xác định.</div>
       <p class="form-message" id="revoke-device-message"></p>
       <footer class="modal__footer"><button class="button button--secondary" type="button" data-close-dialog="revoke-device-dialog">Hủy</button><button class="button button--danger" id="confirm-revoke-device">Thu hồi thiết bị</button></footer>
+    </section>
+  </dialog>
+
+  <dialog class="modal" id="delete-device-dialog">
+    <section class="modal__card">
+      <header class="modal__header"><div><h2>Xoá vĩnh viễn thiết bị</h2><p id="delete-device-text"></p></div><button class="icon-button" type="button" data-close-dialog="delete-device-dialog">×</button></header>
+      <div class="warning-box">Thao tác này xoá thiết bị khỏi policy, khoá định danh và tệp cấu hình môi trường. Các audit log lịch sử vẫn được giữ lại.</div>
+      <p class="form-message" id="delete-device-message"></p>
+      <footer class="modal__footer"><button class="button button--secondary" type="button" data-close-dialog="delete-device-dialog">Hủy</button><button class="button button--danger" id="confirm-delete-device">Xoá vĩnh viễn</button></footer>
     </section>
   </dialog>
 </body>

@@ -3,7 +3,9 @@
 #include "ztas/identity/auth_service.hpp"
 #include "ztas/identity/mfa_service.hpp"
 #include "ztas/device/device_management_service.hpp"
+#include "ztas/device/device_discovery_service.hpp"
 #include "ztas/device/device_registry.hpp"
+#include "ztas/data/secure_data_store.hpp"
 #include "ztas/policy/policy_client.hpp"
 
 #include <httplib.h>
@@ -11,7 +13,9 @@
 
 #include <cstdlib>
 #include <algorithm>
+#include <cerrno>
 #include <cctype>
+#include <cstring>
 #include <exception>
 #include <fstream>
 #include <iostream>
@@ -105,11 +109,11 @@ std::optional<json> read_json_file(const std::string& path) {
 
 json device_inventory(
     const json& policy_data,
-    const json& audit_events
+    const json& audit_events,
+    const json& users_data
 ) {
     json devices = json::array();
     std::unordered_map<std::string, std::size_t> indexes;
-
     if (policy_data.contains("devices")) {
         for (auto iterator = policy_data.at("devices").begin();
              iterator != policy_data.at("devices").end();
@@ -125,11 +129,66 @@ json device_inventory(
                 {"trust_level", source.value("trust_level", 0)},
                 {"location_id", source.value("location_id", "unknown")},
                 {"status", registered ? "IDENTIFIED" : "UNIDENTIFIED"},
+                {"assigned_accounts", json::array()},
+                {"approved", false},
                 {"last_event", nullptr},
                 {"last_seen", 0}
             });
         }
     }
+
+    // Gan tai khoan vao thiet bi de Dashboard the hien ro danh tinh + thiet bi.
+    // Admin voi "*" duoc hien tren moi thiet bi nhu quyen quan tri toan cuc.
+    if (users_data.contains("users") && users_data.at("users").is_array()) {
+        for (const auto& user : users_data.at("users")) {
+            const std::string username = user.value("username", "");
+            const std::string role = user.value("role", "");
+            if (username.empty() || !user.contains("allowed_device_ids") ||
+                !user.at("allowed_device_ids").is_array()) {
+                continue;
+            }
+
+            for (const auto& allowed_id : user.at("allowed_device_ids")) {
+                if (!allowed_id.is_string()) {
+                    continue;
+                }
+
+                const std::string device_id = allowed_id.get<std::string>();
+                const json account = {
+                    {"username", username},
+                    {"role", role},
+                    {"scope", device_id == "*" ? "all" : "device"}
+                };
+
+                if (device_id == "*") {
+                    for (const auto& [id, index] : indexes) {
+                        devices.at(index)["assigned_accounts"].push_back(account);
+                    }
+                } else if (indexes.find(device_id) != indexes.end()) {
+                    devices.at(indexes.at(device_id))["assigned_accounts"]
+                        .push_back(account);
+                    devices.at(indexes.at(device_id))["approved"] = true;
+                }
+            }
+        }
+    }
+
+    // Dashboard chi hien thiet bi da duoc cap phat va co gan tai khoan cu the.
+    // May la chi co trong audit/pending_devices.json, khong nam trong day.
+    json approved_devices = json::array();
+    indexes.clear();
+    for (const auto& device : devices) {
+        if (!device.value("registered", false) ||
+            !device.value("approved", false)) {
+            continue;
+        }
+
+        json visible_device = device;
+        visible_device.erase("approved");
+        indexes[visible_device.value("id", "")] = approved_devices.size();
+        approved_devices.push_back(visible_device);
+    }
+    devices = std::move(approved_devices);
 
     for (const auto& event : audit_events) {
         const std::string id = event.value("device_id", "");
@@ -138,16 +197,8 @@ json device_inventory(
         }
 
         if (indexes.find(id) == indexes.end()) {
-            indexes[id] = devices.size();
-            devices.push_back({
-                {"id", id},
-                {"registered", false},
-                {"trust_level", 0},
-                {"location_id", event.value("location_id", "unknown")},
-                {"status", "UNIDENTIFIED"},
-                {"last_event", nullptr},
-                {"last_seen", 0}
-            });
+            // Thiet bi la/thu hoi/xoa chi duoc ghi trong audit, khong hien dashboard.
+            continue;
         }
 
         json& device = devices.at(indexes.at(id));
@@ -340,6 +391,8 @@ void handle_document_request(
     MfaService& mfa_service,
     const AuditLogger& audit_logger,
     const AccessService& access_service,
+    const DeviceDiscoveryService& discovery_service,
+    const SecureDataStore& data_store,
     const ProtectedResource& resource
 ) {
     const auto subject =
@@ -377,6 +430,27 @@ void handle_document_request(
 
     const AccessDecision decision =
         access_service.authorize(access_request);
+
+    if (decision.reason_code == "DEVICE_NOT_REGISTERED") {
+        const DiscoveryResult discovery = discovery_service.record_attempt(
+            device_id,
+            request.get_header_value("X-Location-ID"),
+            request.has_header("User-Agent")
+                ? request.get_header_value("User-Agent")
+                : "unknown"
+        );
+
+        if (discovery.success && discovery.first_seen) {
+            audit_logger.write({
+                {"event_type", "DEVICE_DISCOVERED"},
+                {"device_id", device_id},
+                {"location_id", request.get_header_value("X-Location-ID")},
+                {"username", subject->username},
+                {"reason_code", "PENDING_ADMIN_APPROVAL"},
+                {"severity", "medium"}
+            });
+        }
+    }
 
     if (!decision.policy_available) {
         send_json(response, 502, {
@@ -428,7 +502,26 @@ void handle_document_request(
     }
 
     if (decision.is_permitted()) {
-        body["content"] = resource.content;
+        const auto document = data_store.find_document(resource.id);
+        if (!document.has_value()) {
+            audit_logger.write({
+                {"event_type", "DATA_STORE_ERROR"},
+                {"username", subject->username},
+                {"device_id", device_id},
+                {"resource_id", resource.id},
+                {"reason_code", "DOCUMENT_NOT_FOUND_IN_DATABASE"},
+                {"severity", "critical"}
+            });
+            send_json(response, 500, {
+                {"error", "DOCUMENT_NOT_FOUND_IN_DATABASE"}
+            });
+            return;
+        }
+
+        // Noi dung chi duoc doc tu CSDL sau khi OPA da tra PERMIT.
+        body["content"] = document->content;
+        body["title"] = document->title;
+        body["data_zone"] = document->zone_id;
         send_json(response, 200, body);
         return;
     }
@@ -476,6 +569,12 @@ int main() {
     const std::string device_environment_directory =
         env_or_default("DEVICE_ENVIRONMENT_DIRECTORY", "runtime/devices");
 
+    const std::string pending_devices_file =
+        env_or_default("PENDING_DEVICES_FILE", "data/pending_devices.json");
+
+    const std::string data_store_file =
+        env_or_default("DATA_STORE_FILE", "data/ztas.db");
+
     const std::string web_assets_directory =
         env_or_default("WEB_ASSETS_DIRECTORY", "web/assets");
 
@@ -498,12 +597,15 @@ int main() {
 
     const PolicyClient policy_client(opa_host);
     const AuditLogger audit_logger(audit_log_directory);
+    const SecureDataStore data_store(data_store_file);
     const DeviceRegistry device_registry(device_credentials_file);
+    const DeviceDiscoveryService discovery_service(pending_devices_file);
     const DeviceManagementService device_management_service(
         devices_policy_file,
         locations_policy_file,
         device_credentials_file,
-        device_environment_directory
+        device_environment_directory,
+        users_file
     );
     MfaService mfa_service(token_secret, demo_mfa_enabled);
     const AccessService access_service(
@@ -511,9 +613,15 @@ int main() {
         audit_logger
     );
 
+    if (!data_store.is_ready()) {
+        std::cerr << "Khong the khoi tao CSDL PoC: "
+                  << data_store.error_message() << std::endl;
+        return 1;
+    }
+
     httplib::Server server;
 
-    server.Get("/health", [&opa_host, demo_mfa_enabled](
+    server.Get("/health", [&opa_host, demo_mfa_enabled, &data_store](
         const httplib::Request&,
         httplib::Response& response
     ) {
@@ -521,7 +629,8 @@ int main() {
             {"service", "ztas"},
             {"status", "UP"},
             {"opa_host", opa_host},
-            {"demo_mfa_enabled", demo_mfa_enabled}
+            {"demo_mfa_enabled", demo_mfa_enabled},
+            {"data_store", data_store.is_ready() ? "UP" : "DOWN"}
         });
     });
 
@@ -711,7 +820,29 @@ int main() {
             }
         }
 
-        const json events = audit_logger.read_recent(limit);
+        std::string selected_date;
+        if (request.has_param("date")) {
+            selected_date = request.get_param_value("date");
+            const bool date_is_valid = selected_date.size() == 10 &&
+                selected_date[4] == '-' && selected_date[7] == '-' &&
+                std::all_of(
+                    selected_date.begin(), selected_date.end(),
+                    [](unsigned char character) {
+                        return character == '-' || std::isdigit(character);
+                    }
+                );
+
+            if (!date_is_valid) {
+                send_json(response, 400, {
+                    {"error", "INVALID_AUDIT_DATE"}
+                });
+                return;
+            }
+        }
+
+        const json events = selected_date.empty()
+            ? audit_logger.read_recent(limit)
+            : audit_logger.read_day(selected_date, limit);
         int permits = 0;
         int denies = 0;
         int step_ups = 0;
@@ -733,6 +864,7 @@ int main() {
 
         send_json(response, 200, {
             {"events", events},
+            {"selected_date", selected_date},
             {"summary", {
                 {"total", events.size()},
                 {"permits", permits},
@@ -807,6 +939,7 @@ int main() {
     server.Get("/api/devices", [
         &auth_service,
         &devices_policy_file,
+        &users_file,
         &audit_logger
     ](
         const httplib::Request& request,
@@ -825,14 +958,77 @@ int main() {
             return;
         }
 
+        const json users_data =
+            read_json_file(users_file).value_or(json::object());
+
         send_json(
             response,
             200,
             device_inventory(
                 *policy_data,
-                audit_logger.read_recent(500)
+                audit_logger.read_recent(500),
+                users_data
             )
         );
+    });
+
+    server.Get("/api/data-zones", [
+        &auth_service,
+        &data_store
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto admin =
+            authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) {
+            return;
+        }
+
+        json zones = json::array();
+        for (const auto& zone : data_store.list_zones()) {
+            zones.push_back({
+                {"id", zone.zone_id},
+                {"name", zone.display_name},
+                {"sensitivity", zone.sensitivity},
+                {"description", zone.description},
+                {"document_count", zone.document_count}
+            });
+        }
+
+        send_json(response, 200, {
+            {"database", "SQLite"},
+            {"zones", zones}
+        });
+    });
+
+    server.Get("/api/users", [
+        &auth_service,
+        &users_file
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto admin =
+            authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) {
+            return;
+        }
+
+        const auto users_data = read_json_file(users_file);
+        if (!users_data.has_value() || !users_data->contains("users")) {
+            send_json(response, 500, {{"error", "USERS_FILE_NOT_FOUND"}});
+            return;
+        }
+
+        json users = json::array();
+        for (const auto& user : users_data->at("users")) {
+            users.push_back({
+                {"username", user.value("username", "")},
+                {"role", user.value("role", "")}
+            });
+        }
+        send_json(response, 200, {{"users", users}});
     });
 
     server.Post("/api/devices", [
@@ -855,7 +1051,8 @@ int main() {
                 device_management_service.enroll(
                     body.value("device_id", ""),
                     body.value("trust_level", 0),
-                    body.value("location_id", "")
+                    body.value("location_id", ""),
+                    body.value("assigned_username", "")
                 );
 
             if (!result.success) {
@@ -938,6 +1135,58 @@ int main() {
             {"trust_level", result.trust_level},
             {"location_id", result.location_id},
             {"reason_code", "DEVICE_REVOKED"},
+            {"severity", "high"}
+        });
+
+        send_json(response, 200, {
+            {"message", result.message},
+            {"device_id", result.device_id}
+        });
+    });
+
+    server.Delete("/api/devices/permanent", [
+        &auth_service,
+        &device_management_service,
+        &audit_logger
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto admin =
+            authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) {
+            return;
+        }
+
+        if (!request.has_param("id")) {
+            send_json(response, 400, {
+                {"error", "MISSING_DEVICE_ID"}
+            });
+            return;
+        }
+
+        const DeviceOperationResult result =
+            device_management_service.remove(
+                request.get_param_value("id")
+            );
+
+        if (!result.success) {
+            const int status = result.code == "DEVICE_NOT_FOUND" ? 404 : 400;
+            send_json(response, status, {
+                {"error", result.code},
+                {"message", result.message}
+            });
+            return;
+        }
+
+        // Chi xoa cau hinh thiet bi; audit log phai luon duoc giu lai.
+        audit_logger.write({
+            {"event_type", "DEVICE_DELETED"},
+            {"actor", admin->username},
+            {"device_id", result.device_id},
+            {"trust_level", result.trust_level},
+            {"location_id", result.location_id},
+            {"reason_code", "DEVICE_DELETED"},
             {"severity", "high"}
         });
 
@@ -1115,12 +1364,14 @@ int main() {
         &device_registry,
         &mfa_service,
         &audit_logger,
-        &access_service
+        &access_service,
+        &discovery_service,
+        &data_store
     ](const httplib::Request& request, httplib::Response& response) {
         handle_document_request(
             request, response, auth_service, device_registry, mfa_service,
             audit_logger,
-            access_service, kPublicDocument
+            access_service, discovery_service, data_store, kPublicDocument
         );
     });
 
@@ -1129,12 +1380,14 @@ int main() {
         &device_registry,
         &mfa_service,
         &audit_logger,
-        &access_service
+        &access_service,
+        &discovery_service,
+        &data_store
     ](const httplib::Request& request, httplib::Response& response) {
         handle_document_request(
             request, response, auth_service, device_registry, mfa_service,
             audit_logger,
-            access_service, kInternalDocument
+            access_service, discovery_service, data_store, kInternalDocument
         );
     });
 
@@ -1143,12 +1396,14 @@ int main() {
         &device_registry,
         &mfa_service,
         &audit_logger,
-        &access_service
+        &access_service,
+        &discovery_service,
+        &data_store
     ](const httplib::Request& request, httplib::Response& response) {
         handle_document_request(
             request, response, auth_service, device_registry, mfa_service,
             audit_logger,
-            access_service, kConfidentialDocument
+            access_service, discovery_service, data_store, kConfidentialDocument
         );
     });
 
@@ -1157,12 +1412,14 @@ int main() {
         &device_registry,
         &mfa_service,
         &audit_logger,
-        &access_service
+        &access_service,
+        &discovery_service,
+        &data_store
     ](const httplib::Request& request, httplib::Response& response) {
         handle_document_request(
             request, response, auth_service, device_registry, mfa_service,
             audit_logger,
-            access_service, kSecretDocument
+            access_service, discovery_service, data_store, kSecretDocument
         );
     });
 
@@ -1171,15 +1428,24 @@ int main() {
         &device_registry,
         &mfa_service,
         &audit_logger,
-        &access_service
+        &access_service,
+        &discovery_service,
+        &data_store
     ](const httplib::Request& request, httplib::Response& response) {
         handle_document_request(
             request, response, auth_service, device_registry, mfa_service,
             audit_logger,
-            access_service, kRestrictedDocument
+            access_service, discovery_service, data_store, kRestrictedDocument
         );
     });
 
-    std::cout << "ZTAS is running at http://127.0.0.1:8020\n";
-    return server.listen("0.0.0.0", 8020) ? 0 : 1;
+    std::cout << "ZTAS is running at http://poc-ptit.localhost:8020" << std::endl;
+
+    if (!server.listen("0.0.0.0", 8020)) {
+        std::cerr << "Khong the mo cong 8020: "
+                  << std::strerror(errno) << std::endl;
+        return 1;
+    }
+
+    return 0;
 }

@@ -21,16 +21,24 @@ public:
         std::string devices_policy_file,
         std::string locations_policy_file,
         std::string credentials_file,
-        std::string device_environment_directory
+        std::string device_environment_directory,
+        std::string users_file
     );
 
     DeviceOperationResult enroll(
         const std::string& device_id,
         int trust_level,
-        const std::string& location_id
+        const std::string& location_id,
+        const std::string& assigned_username
     ) const;
 
     DeviceOperationResult revoke(
+        const std::string& device_id
+    ) const;
+
+    // Xoa vinh vien khoi policy, credentials, file .env va lien ket user.
+    // Audit log khong bi xoa de giu bang chung su kien.
+    DeviceOperationResult remove(
         const std::string& device_id
     ) const;
 
@@ -39,5 +47,6 @@ private:
     std::string locations_policy_file_;
     std::string credentials_file_;
     std::string device_environment_directory_;
+    std::string users_file_;
     mutable std::mutex mutex_;
 };

@@ -1,5 +1,10 @@
 build/
 data/audit.jsonl
 data/logs/
+data/archive/
+data/ztas.db
+data/ztas.db-shm
+data/ztas.db-wal
+data/pending_devices.json
 data/device_credentials.json
 runtime/
