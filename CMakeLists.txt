@@ -13,6 +13,7 @@ add_executable(ztas
     src/device/device_registry.cpp
     src/device/device_management_service.cpp
     src/device/device_discovery_service.cpp
+    src/device/enrollment_code_service.cpp
     src/authorization/access_service.cpp
     src/policy/policy_client.cpp
     src/audit/audit_logger.cpp

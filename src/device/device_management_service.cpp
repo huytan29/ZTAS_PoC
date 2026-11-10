@@ -170,7 +170,7 @@ DeviceOperationResult failure(
     const std::string& code,
     const std::string& message
 ) {
-    return {false, code, message, "", "", 0, ""};
+    return {false, code, message, "", "", 0, "", "", "", ""};
 }
 
 } // namespace
@@ -191,7 +191,10 @@ DeviceOperationResult DeviceManagementService::enroll(
     const std::string& device_id,
     int trust_level,
     const std::string& location_id,
-    const std::string& assigned_username
+    const std::string& assigned_username,
+    const std::string& device_name,
+    const std::string& device_type,
+    const std::string& enrollment_profile
 ) const {
     std::lock_guard<std::mutex> lock(mutex_);
 
@@ -243,6 +246,14 @@ DeviceOperationResult DeviceManagementService::enroll(
         }
 
         const bool exists = devices_policy["devices"].contains(device_id);
+        if (exists && devices_policy["devices"][device_id].value(
+                "lifecycle_status", ""
+            ) == "BLOCKED") {
+            return failure(
+                "DEVICE_BLOCKED",
+                "Thiet bi dang bi chan; hay xoa hoac xem xet lai cau hinh truoc khi cap phat"
+            );
+        }
         if (exists && devices_policy["devices"][device_id].value("registered", false)) {
             return failure("DEVICE_ALREADY_ACTIVE", "Device ID nay dang duoc dang ky");
         }
@@ -267,8 +278,12 @@ DeviceOperationResult DeviceManagementService::enroll(
 
         devices_policy["devices"][device_id] = {
             {"registered", true},
+            {"lifecycle_status", "ACTIVE"},
             {"trust_level", trust_level},
-            {"location_id", location_id}
+            {"location_id", location_id},
+            {"device_name", device_name.empty() ? device_id : device_name},
+            {"device_type", device_type.empty() ? "unknown" : device_type},
+            {"enrollment_profile", enrollment_profile.empty() ? "manual" : enrollment_profile}
         };
 
         if (!assigned_user->contains("allowed_device_ids") ||
@@ -304,7 +319,10 @@ DeviceOperationResult DeviceManagementService::enroll(
             device_id,
             device_key,
             trust_level,
-            location_id
+            location_id,
+            device_name.empty() ? device_id : device_name,
+            device_type.empty() ? "unknown" : device_type,
+            enrollment_profile.empty() ? "manual" : enrollment_profile
         };
     } catch (const std::exception& error) {
         return failure("DEVICE_ENROLLMENT_ERROR", error.what());
@@ -329,6 +347,7 @@ DeviceOperationResult DeviceManagementService::revoke(
 
         json& device = devices_policy["devices"][device_id];
         device["registered"] = false;
+        device["lifecycle_status"] = "REVOKED";
 
         json credentials = {
             {"schema_version", 1},
@@ -357,7 +376,10 @@ DeviceOperationResult DeviceManagementService::revoke(
             device_id,
             "",
             device.value("trust_level", 0),
-            device.value("location_id", "")
+            device.value("location_id", ""),
+            device.value("device_name", device_id),
+            device.value("device_type", "unknown"),
+            device.value("enrollment_profile", "manual")
         };
     } catch (const std::exception& error) {
         return failure("DEVICE_REVOCATION_ERROR", error.what());
@@ -433,9 +455,65 @@ DeviceOperationResult DeviceManagementService::remove(
             device_id,
             "",
             device.value("trust_level", 0),
-            device.value("location_id", "")
+            device.value("location_id", ""),
+            device.value("device_name", device_id),
+            device.value("device_type", "unknown"),
+            device.value("enrollment_profile", "manual")
         };
     } catch (const std::exception& error) {
         return failure("DEVICE_DELETION_ERROR", error.what());
+    }
+}
+
+DeviceOperationResult DeviceManagementService::block(
+    const std::string& device_id
+) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    if (!valid_device_id(device_id)) {
+        return failure("INVALID_DEVICE_ID", "Device ID khong hop le");
+    }
+
+    try {
+        json devices_policy = read_json(devices_policy_file_);
+        if (!devices_policy.contains("devices") ||
+            !devices_policy.at("devices").contains(device_id)) {
+            return failure("DEVICE_NOT_FOUND", "Khong tim thay thiet bi trong policy");
+        }
+
+        json& device = devices_policy["devices"][device_id];
+        device["registered"] = false;
+        device["lifecycle_status"] = "BLOCKED";
+
+        json credentials = {{"schema_version", 1}, {"devices", json::object()}};
+        if (fs::exists(credentials_file_)) {
+            credentials = read_json(credentials_file_);
+            if (credentials.contains("devices")) {
+                credentials["devices"].erase(device_id);
+            }
+        }
+
+        write_json(credentials_file_, credentials);
+        write_json(devices_policy_file_, devices_policy);
+        std::error_code error;
+        fs::remove(
+            fs::path(device_environment_directory_) / (device_id + ".env"),
+            error
+        );
+
+        return {
+            true,
+            "DEVICE_BLOCKED",
+            "Da chan thiet bi va vo hieu hoa khoa dinh danh",
+            device_id,
+            "",
+            device.value("trust_level", 0),
+            device.value("location_id", ""),
+            device.value("device_name", device_id),
+            device.value("device_type", "unknown"),
+            device.value("enrollment_profile", "manual")
+        };
+    } catch (const std::exception& error) {
+        return failure("DEVICE_BLOCK_ERROR", error.what());
     }
 }

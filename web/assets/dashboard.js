@@ -17,11 +17,19 @@ const statusInfo = {
 };
 
 const orderByStatus = { STEP_UP: 0, UNIDENTIFIED: 1, IDENTIFIED: 2 };
+const enrollmentProfiles = {
+  guest: { trust: 1, location: "external-network" },
+  unmanaged: { trust: 2, location: "external-network" },
+  "managed-vm": { trust: 3, location: "lab-network" },
+  trusted: { trust: 4, location: "campus-network" },
+  secure: { trust: 5, location: "secure-zone" }
+};
 let adminToken = sessionStorage.getItem("ztas_admin_token") ?? "";
 let pendingAdminAction = null;
 let deviceToRevoke = null;
 let deviceToDelete = null;
 let issuedCredential = null;
+let issuedEnrollmentCode = "";
 let assignableUsers = [];
 
 function escapeHtml(value) {
@@ -89,7 +97,7 @@ function renderDeviceCards(devices) {
 
       return `
         <tr>
-          <td class="device-table__device"><i class="status-dot status-dot--${dotClass}"></i><strong>${escapeHtml(device.id)}</strong></td>
+          <td class="device-table__device"><i class="status-dot status-dot--${dotClass}"></i><strong>${escapeHtml(device.device_name || device.id)}</strong><span class="device-table__id">${escapeHtml(device.id)} · ${escapeHtml(device.device_type || "unknown")}</span></td>
           <td><span class="device-status device-status--${info.cardClass}">${info.label}</span></td>
           <td><span class="device-zone">${escapeHtml(device.location_id)}</span></td>
           <td><span class="trust-value">${escapeHtml(device.trust_level)}/5</span></td>
@@ -97,7 +105,7 @@ function renderDeviceCards(devices) {
           <td class="device-table__activity"><strong>${lastActivity(device)}</strong><span>${formatTime(device.last_seen)}</span></td>
           <td class="device-table__actions">
             ${device.registered
-              ? `<button class="button button--secondary button--small" data-revoke-device="${escapeHtml(device.id)}">Thu hồi</button>`
+              ? `<button class="button button--secondary button--small" data-revoke-device="${escapeHtml(device.id)}">Thu hồi</button><button class="button button--danger-outline button--small" data-block-device="${escapeHtml(device.id)}">Chặn</button>`
               : `<button class="button button--secondary button--small" data-reenroll-device="${escapeHtml(device.id)}">Đăng ký lại</button>`}
             <button class="button button--danger-outline button--small" data-delete-device="${escapeHtml(device.id)}">Xoá</button>
           </td>
@@ -127,6 +135,12 @@ function renderDeviceCards(devices) {
   container.querySelectorAll("[data-delete-device]").forEach(button => {
     button.addEventListener("click", () => {
       requireAdmin(() => openDeleteDialog(button.dataset.deleteDevice));
+    });
+  });
+
+  container.querySelectorAll("[data-block-device]").forEach(button => {
+    button.addEventListener("click", () => {
+      requireAdmin(() => blockDevice(button.dataset.blockDevice));
     });
   });
 }
@@ -182,16 +196,16 @@ function renderConnectionRequests(requests) {
 
   container.innerHTML = `
     <table class="connection-request-table">
-      <thead><tr><th>Thiết bị yêu cầu</th><th>Vùng mạng khai báo</th><th>IP nguồn</th><th>Lần đầu / gần nhất</th><th>Số lần thử</th><th>Thông tin máy khách</th><th>Thao tác</th></tr></thead>
+      <thead><tr><th>Thiết bị yêu cầu</th><th>Profile / tài khoản</th><th>Vùng mạng</th><th>IP nguồn</th><th>Lần đầu / gần nhất</th><th>Thông tin máy khách</th><th>Thao tác</th></tr></thead>
       <tbody>${requests.map(request => `
         <tr>
-          <td><strong>${escapeHtml(request.device_id)}</strong><span class="request-state"><i class="status-dot status-dot--warning"></i>Chờ phân loại</span></td>
+          <td><strong>${escapeHtml(request.device_name || request.device_id)}</strong><span class="request-state"><i class="status-dot status-dot--warning"></i>${request.enrollment_verified ? "Mã đăng ký hợp lệ · chờ duyệt" : "Chờ phân loại"}</span><span class="request-id">${escapeHtml(request.device_id)} · ${escapeHtml(request.device_type || "unknown")}</span></td>
+          <td><strong>${escapeHtml(request.enrollment_profile || "manual")}</strong><span class="request-account">${escapeHtml(request.requested_username || "Chưa gán tài khoản")}</span></td>
           <td><span class="device-zone">${escapeHtml(request.location_id)}</span></td>
           <td><span class="device-zone">${escapeHtml(request.source_ip)}</span></td>
           <td class="request-time"><strong>${formatTime(request.first_seen)}</strong><span>Cập nhật: ${formatTime(request.last_seen)}</span></td>
-          <td>${escapeHtml(request.attempt_count)}</td>
           <td class="request-agent" title="${escapeHtml(request.user_agent)}">${escapeHtml(request.user_agent)}</td>
-          <td><button class="button button--primary button--small" data-approve-request="${escapeHtml(request.device_id)}" data-request-location="${escapeHtml(request.location_id)}">Phân loại &amp; cấp quyền</button></td>
+          <td><button class="button button--primary button--small" data-approve-request="${escapeHtml(request.device_id)}" data-request-location="${escapeHtml(request.location_id)}" data-request-profile="${escapeHtml(request.enrollment_profile || "manual")}" data-request-user="${escapeHtml(request.requested_username || "")}" data-request-name="${escapeHtml(request.device_name || request.device_id)}" data-request-type="${escapeHtml(request.device_type || "unknown")}">Phân loại &amp; cấp quyền</button></td>
         </tr>`).join("")}</tbody>
     </table>`;
 
@@ -199,7 +213,11 @@ function renderConnectionRequests(requests) {
     button.addEventListener("click", () => {
       requireAdmin(() => openEnrollDialog(
         button.dataset.approveRequest,
-        button.dataset.requestLocation
+        button.dataset.requestLocation,
+        button.dataset.requestProfile,
+        button.dataset.requestUser,
+        button.dataset.requestName,
+        button.dataset.requestType
       ));
     });
   });
@@ -295,8 +313,7 @@ function apiHeaders() {
   };
 }
 
-async function loadAssignableUsers() {
-  const selector = document.querySelector("#enroll-device-form select[name=assigned_username]");
+async function loadAssignableUsers(selector) {
   try {
     const response = await fetch("/api/users", { headers: apiHeaders() });
     const data = await parseResponse(response);
@@ -312,18 +329,51 @@ async function loadAssignableUsers() {
   }
 }
 
-async function openEnrollDialog(deviceId = "", locationId = "lab-network") {
+function applyEnrollmentProfile(form, profileId) {
+  const profile = enrollmentProfiles[profileId];
+  if (!profile) return;
+  form.elements.trust_level.value = String(profile.trust);
+  form.elements.location_id.value = profile.location;
+}
+
+async function openEnrollDialog(
+  deviceId = "",
+  locationId = "lab-network",
+  profileId = "managed-vm",
+  assignedUsername = "",
+  deviceName = "",
+  deviceType = "unknown"
+) {
   const form = document.querySelector("#enroll-device-form");
   form.reset();
   form.elements.device_id.value = deviceId;
-  form.elements.trust_level.value = "3";
-  form.elements.location_id.value = [...form.elements.location_id.options]
-    .some(option => option.value === locationId)
-      ? locationId
-      : "lab-network";
+  form.elements.device_name.value = deviceName;
+  form.elements.device_type.value = deviceType;
+  form.elements.enrollment_profile.value = enrollmentProfiles[profileId] ? profileId : "manual";
+  if (enrollmentProfiles[profileId]) {
+    applyEnrollmentProfile(form, profileId);
+  } else {
+    form.elements.trust_level.value = "3";
+    form.elements.location_id.value = [...form.elements.location_id.options]
+      .some(option => option.value === locationId) ? locationId : "lab-network";
+  }
   document.querySelector("#enroll-device-message").textContent = "";
-  await loadAssignableUsers();
+  await loadAssignableUsers(form.elements.assigned_username);
+  if (assignedUsername && [...form.elements.assigned_username.options]
+    .some(option => option.value === assignedUsername)) {
+    form.elements.assigned_username.value = assignedUsername;
+  }
   showDialog("enroll-device-dialog");
+}
+
+async function openEnrollmentCodeDialog() {
+  const form = document.querySelector("#issue-enrollment-code-form");
+  form.reset();
+  form.elements.profile.value = "managed-vm";
+  form.elements.lifetime_seconds.value = "600";
+  document.querySelector("#issue-enrollment-code-message").textContent = "";
+  await loadAssignableUsers(form.elements.assigned_username);
+  showDialog("issue-enrollment-code-dialog");
 }
 
 function openRevokeDialog(deviceId) {
@@ -342,6 +392,21 @@ function openDeleteDialog(deviceId) {
   showDialog("delete-device-dialog");
 }
 
+async function blockDevice(deviceId) {
+  if (!confirm(`Chặn ${deviceId}? Device Key sẽ bị vô hiệu hóa ngay.`)) return;
+  try {
+    const response = await fetch("/api/devices/block", {
+      method: "POST",
+      headers: apiHeaders(),
+      body: JSON.stringify({ device_id: deviceId })
+    });
+    await parseResponse(response);
+    refreshDashboard();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
 async function parseResponse(response) {
   const body = await response.json().catch(() => ({}));
 
@@ -358,6 +423,14 @@ async function parseResponse(response) {
 
 document.querySelector("#add-device-button").addEventListener("click", () => {
   requireAdmin(() => openEnrollDialog());
+});
+
+document.querySelector("#issue-enrollment-code-button").addEventListener("click", () => {
+  requireAdmin(() => openEnrollmentCodeDialog());
+});
+
+document.querySelector("#enroll-device-form select[name=enrollment_profile]").addEventListener("change", event => {
+  applyEnrollmentProfile(document.querySelector("#enroll-device-form"), event.target.value);
 });
 
 document.querySelector("#admin-login-form").addEventListener("submit", async event => {
@@ -404,6 +477,9 @@ document.querySelector("#enroll-device-form").addEventListener("submit", async e
       headers: apiHeaders(),
       body: JSON.stringify({
         device_id: form.elements.device_id.value.trim(),
+        device_name: form.elements.device_name.value.trim(),
+        device_type: form.elements.device_type.value,
+        enrollment_profile: form.elements.enrollment_profile.value,
         trust_level: Number(form.elements.trust_level.value),
         location_id: form.elements.location_id.value,
         assigned_username: form.elements.assigned_username.value
@@ -419,6 +495,33 @@ document.querySelector("#enroll-device-form").addEventListener("submit", async e
     showDialog("device-key-dialog");
     refreshDashboard();
     refreshConnectionRequests();
+  } catch (error) {
+    message.textContent = error.message;
+  }
+});
+
+document.querySelector("#issue-enrollment-code-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const message = document.querySelector("#issue-enrollment-code-message");
+  message.textContent = "Đang tạo mã đăng ký…";
+  try {
+    const response = await fetch("/api/enrollment-codes", {
+      method: "POST",
+      headers: apiHeaders(),
+      body: JSON.stringify({
+        profile: form.elements.profile.value,
+        assigned_username: form.elements.assigned_username.value,
+        lifetime_seconds: Number(form.elements.lifetime_seconds.value)
+      })
+    });
+    const data = await parseResponse(response);
+    issuedEnrollmentCode = data.enrollment_code;
+    document.querySelector("#issued-enrollment-code").value = data.enrollment_code;
+    document.querySelector("#enrollment-code-result-text").textContent =
+      `Mã có hiệu lực đến ${formatTime(data.expires_at)}. Profile ${data.profile.label}, gán cho ${data.assigned_username}.`;
+    closeDialog("issue-enrollment-code-dialog");
+    showDialog("enrollment-code-result-dialog");
   } catch (error) {
     message.textContent = error.message;
   }
@@ -468,6 +571,12 @@ document.querySelector("#copy-device-key").addEventListener("click", async () =>
   document.querySelector("#copy-device-key").textContent = "Đã sao chép";
 });
 
+document.querySelector("#copy-enrollment-code").addEventListener("click", async () => {
+  if (!issuedEnrollmentCode) return;
+  await navigator.clipboard.writeText(issuedEnrollmentCode);
+  document.querySelector("#copy-enrollment-code").textContent = "Đã sao chép";
+});
+
 document.querySelector("#download-device-env").addEventListener("click", () => {
   if (!issuedCredential) return;
   const content = [
@@ -491,6 +600,12 @@ document.querySelector("#device-key-dialog").addEventListener("close", () => {
   issuedCredential = null;
   document.querySelector("#issued-device-key").value = "";
   document.querySelector("#copy-device-key").textContent = "Sao chép key";
+});
+
+document.querySelector("#enrollment-code-result-dialog").addEventListener("close", () => {
+  issuedEnrollmentCode = "";
+  document.querySelector("#issued-enrollment-code").value = "";
+  document.querySelector("#copy-enrollment-code").textContent = "Sao chép mã";
 });
 
 document.querySelector("#logout-button").addEventListener("click", async () => {

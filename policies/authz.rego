@@ -39,6 +39,10 @@ device_registered if {
     data.devices[input.device.id].registered == true
 }
 
+device_blocked if {
+    data.devices[input.device.id].lifecycle_status == "BLOCKED"
+}
+
 # Gia tri nay chi do ZTAS tao sau khi doi chieu Device ID va Device Key.
 # Rego khong bao gio nhan hoac luu khoa bi mat cua thiet bi.
 device_key_verified if {
@@ -148,12 +152,24 @@ decision := output(
 
 decision := output(
     "DENY",
+    "ZTAS-1007",
+    "DEVICE_BLOCKED",
+    "critical",
+    1
+) if {
+    valid_context
+    device_blocked
+}
+
+decision := output(
+    "DENY",
     "ZTAS-1002",
     "DEVICE_REGISTRATION_INACTIVE",
     "critical",
     1
 ) if {
     valid_context
+    not device_blocked
     not device_registered
 }
 

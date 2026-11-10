@@ -11,6 +11,9 @@ struct DeviceOperationResult {
     std::string device_key;
     int trust_level = 0;
     std::string location_id;
+    std::string device_name;
+    std::string device_type;
+    std::string enrollment_profile;
 };
 
 // Quan ly vong doi thiet bi trong PoC: cap phat va thu hoi dinh danh.
@@ -29,10 +32,18 @@ public:
         const std::string& device_id,
         int trust_level,
         const std::string& location_id,
-        const std::string& assigned_username
+        const std::string& assigned_username,
+        const std::string& device_name = "",
+        const std::string& device_type = "unknown",
+        const std::string& enrollment_profile = "manual"
     ) const;
 
     DeviceOperationResult revoke(
+        const std::string& device_id
+    ) const;
+
+    // Chan co chu dich: vo hieu hoa khoa va ghi lifecycle BLOCKED trong policy.
+    DeviceOperationResult block(
         const std::string& device_id
     ) const;
 

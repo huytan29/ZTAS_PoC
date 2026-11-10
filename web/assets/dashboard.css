@@ -39,6 +39,7 @@
 .connection-request-table td { padding:14px 16px; border-bottom:1px solid var(--line); color:var(--ink); font-size:13px; vertical-align:middle; }
 .connection-request-table tbody tr:last-child td { border-bottom:0; }.connection-request-table tbody tr:hover { background:var(--surface-hover); }
 .request-state { display:block; margin-top:5px; color:#9a6500; font-size:11px; font-weight:700; }.request-state .status-dot { margin-right:6px; }
+.request-id,.request-account { display:block; margin-top:4px; color:var(--muted); font-size:11px; }.request-id { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
 .request-time strong,.request-time span { display:block; }.request-time strong { font-size:12px; font-weight:650; }.request-time span { margin-top:3px; color:var(--muted); font-size:11px; }
 .request-agent { max-width:230px; overflow:hidden; color:var(--muted) !important; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px !important; text-overflow:ellipsis; white-space:nowrap; }
 .database-badge { padding:6px 9px; border:1px solid #cfe0f7; border-radius:999px; background:#f2f7ff; color:#38619a; font-size:11px; font-weight:750; white-space:nowrap; }
@@ -62,6 +63,7 @@
 .device-table tbody tr:hover { background: var(--surface-hover); }
 .device-table__device { min-width: 175px; color: var(--ink) !important; white-space: nowrap; }
 .device-table__device .status-dot { margin-right: 9px; }
+.device-table__id { display:block; margin:4px 0 0 21px; color:var(--muted); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
 .device-status { display: inline-block; padding: 5px 8px; border-radius: 999px; font-size: 11px; font-weight: 760; white-space: nowrap; }
 .device-status--identified { background: var(--green-soft); color: var(--green); }
 .device-status--unidentified { background: var(--red-soft); color: var(--red); }

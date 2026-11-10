@@ -7,5 +7,6 @@ data/ztas.db
 data/ztas.db-shm
 data/ztas.db-wal
 data/pending_devices.json
+data/enrollment_codes.json
 data/device_credentials.json
 runtime/

@@ -70,7 +70,12 @@ DiscoveryResult DeviceDiscoveryService::record_attempt(
     const std::string& device_id,
     const std::string& location_id,
     const std::string& source_ip,
-    const std::string& user_agent
+    const std::string& user_agent,
+    const std::string& device_name,
+    const std::string& device_type,
+    const std::string& enrollment_profile,
+    const std::string& requested_username,
+    bool enrollment_verified
 ) const {
     std::lock_guard<std::mutex> lock(mutex_);
 
@@ -95,6 +100,12 @@ DiscoveryResult DeviceDiscoveryService::record_attempt(
         discovery["location_id"] = location_id;
         discovery["source_ip"] = source_ip;
         discovery["user_agent"] = user_agent;
+        if (!device_name.empty()) discovery["device_name"] = device_name;
+        if (!device_type.empty()) discovery["device_type"] = device_type;
+        if (!enrollment_profile.empty()) discovery["enrollment_profile"] = enrollment_profile;
+        if (!requested_username.empty()) discovery["requested_username"] = requested_username;
+        discovery["enrollment_verified"] = enrollment_verified ||
+            discovery.value("enrollment_verified", false);
         discovery["attempt_count"] = discovery.value("attempt_count", 0) + 1;
         discovery["status"] = "PENDING_APPROVAL";
         write_json(path, discoveries);
@@ -124,6 +135,11 @@ std::vector<PendingDeviceRequest> DeviceDiscoveryService::list_pending() const {
                 discovery.value("location_id", "unknown"),
                 discovery.value("source_ip", "unknown"),
                 discovery.value("user_agent", "unknown"),
+                discovery.value("device_name", ""),
+                discovery.value("device_type", "unknown"),
+                discovery.value("enrollment_profile", "manual"),
+                discovery.value("requested_username", ""),
+                discovery.value("enrollment_verified", false),
                 discovery.value("first_seen", 0LL),
                 discovery.value("last_seen", 0LL),
                 discovery.value("attempt_count", 0)

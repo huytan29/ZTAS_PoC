@@ -4,6 +4,7 @@
 #include "ztas/identity/mfa_service.hpp"
 #include "ztas/device/device_management_service.hpp"
 #include "ztas/device/device_discovery_service.hpp"
+#include "ztas/device/enrollment_code_service.hpp"
 #include "ztas/device/device_registry.hpp"
 #include "ztas/data/secure_data_store.hpp"
 #include "ztas/policy/policy_client.hpp"
@@ -128,6 +129,12 @@ json device_inventory(
                 {"registered", registered},
                 {"trust_level", source.value("trust_level", 0)},
                 {"location_id", source.value("location_id", "unknown")},
+                {"device_name", source.value("device_name", id)},
+                {"device_type", source.value("device_type", "unknown")},
+                {"enrollment_profile", source.value("enrollment_profile", "manual")},
+                {"lifecycle_status", source.value(
+                    "lifecycle_status", registered ? "ACTIVE" : "REVOKED"
+                )},
                 {"status", registered ? "IDENTIFIED" : "UNIDENTIFIED"},
                 {"assigned_accounts", json::array()},
                 {"approved", false},
@@ -576,6 +583,9 @@ int main() {
     const std::string pending_devices_file =
         env_or_default("PENDING_DEVICES_FILE", "data/pending_devices.json");
 
+    const std::string enrollment_codes_file =
+        env_or_default("ENROLLMENT_CODES_FILE", "data/enrollment_codes.json");
+
     const std::string data_store_file =
         env_or_default("DATA_STORE_FILE", "data/ztas.db");
 
@@ -604,6 +614,7 @@ int main() {
     const SecureDataStore data_store(data_store_file);
     const DeviceRegistry device_registry(device_credentials_file);
     const DeviceDiscoveryService discovery_service(pending_devices_file);
+    const EnrollmentCodeService enrollment_code_service(enrollment_codes_file);
     const DeviceManagementService device_management_service(
         devices_policy_file,
         locations_policy_file,
@@ -1379,21 +1390,96 @@ int main() {
         });
     });
 
-    // May moi da dang nhap bang tai khoan co the tu khai bao thong tin o day.
-    // Day chi la yeu cau duyet, khong he cap quyen truy cap tai nguyen.
+    // Admin tao ma mot lan truoc khi cap cho VM/Docker client. Ma khong cap
+    // quyen truy cap du lieu; no chi duoc dung de gui mot yeu cau cho duyet.
+    server.Post("/api/enrollment-codes", [
+        &auth_service,
+        &enrollment_code_service,
+        &users_file,
+        &audit_logger
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto admin =
+            authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) {
+            return;
+        }
+
+        try {
+            const json body = json::parse(request.body);
+            const std::string username = body.value("assigned_username", "");
+            const auto users_data = read_json_file(users_file);
+            bool user_exists = false;
+            if (users_data.has_value() && users_data->contains("users")) {
+                for (const auto& user : users_data->at("users")) {
+                    if (user.value("username", "") == username) {
+                        user_exists = true;
+                        break;
+                    }
+                }
+            }
+            if (!user_exists) {
+                send_json(response, 400, {
+                    {"error", "ASSIGNED_USER_NOT_FOUND"},
+                    {"message", "Tai khoan duoc gan khong ton tai"}
+                });
+                return;
+            }
+
+            const EnrollmentCodeIssueResult result = enrollment_code_service.issue(
+                body.value("profile", ""),
+                username,
+                body.value("lifetime_seconds", 600)
+            );
+            if (!result.success) {
+                send_json(response, 400, {
+                    {"error", result.code},
+                    {"message", result.message}
+                });
+                return;
+            }
+
+            audit_logger.write({
+                {"event_type", "ENROLLMENT_CODE_ISSUED"},
+                {"actor", admin->username},
+                {"username", result.assigned_username},
+                {"enrollment_profile", result.profile.id},
+                {"trust_level", result.profile.trust_level},
+                {"location_id", result.profile.location_id},
+                {"reason_code", "ONE_TIME_CODE_ISSUED"},
+                {"severity", "info"}
+            });
+
+            send_json(response, 201, {
+                {"message", result.message},
+                {"enrollment_code", result.enrollment_code},
+                {"expires_at", result.expires_at},
+                {"profile", {
+                    {"id", result.profile.id},
+                    {"label", result.profile.label},
+                    {"trust_level", result.profile.trust_level},
+                    {"location_id", result.profile.location_id}
+                }},
+                {"assigned_username", result.assigned_username}
+            });
+        } catch (const json::exception&) {
+            send_json(response, 400, {{"error", "INVALID_JSON"}});
+        }
+    });
+
+    // May moi co the dung ma dang ky mot lan hoac token tai khoan de tu khai
+    // bao. Ca hai cach deu chi tao PENDING_APPROVAL, khong cap quyen data.
     server.Post("/api/connection-requests", [
         &auth_service,
+        &enrollment_code_service,
         &discovery_service,
         &audit_logger
     ](
         const httplib::Request& request,
         httplib::Response& response
     ) {
-        const auto subject = authenticate_request(request, auth_service, response);
-        if (!subject.has_value()) {
-            return;
-        }
-
         try {
             const json body = json::parse(request.body);
             const std::string device_id = body.value("device_id", "");
@@ -1406,13 +1492,49 @@ int main() {
                 return;
             }
 
+            std::string requested_username;
+            std::string enrollment_profile = "manual";
+            bool enrollment_verified = false;
+            int profile_trust = 0;
+            std::string profile_location = location_id;
+            const std::string enrollment_code = body.value("enrollment_code", "");
+
+            if (!enrollment_code.empty()) {
+                const EnrollmentCodeConsumeResult code_result =
+                    enrollment_code_service.consume(enrollment_code);
+                if (!code_result.success) {
+                    send_json(response, 403, {
+                        {"error", code_result.code},
+                        {"message", code_result.message}
+                    });
+                    return;
+                }
+                requested_username = code_result.assigned_username;
+                enrollment_profile = code_result.profile.id;
+                enrollment_verified = true;
+                profile_trust = code_result.profile.trust_level;
+                profile_location = code_result.profile.location_id;
+            } else {
+                const auto subject =
+                    authenticate_request(request, auth_service, response);
+                if (!subject.has_value()) {
+                    return;
+                }
+                requested_username = subject->username;
+            }
+
             const DiscoveryResult result = discovery_service.record_attempt(
                 device_id,
-                location_id,
+                profile_location,
                 request.remote_addr.empty() ? "unknown" : request.remote_addr,
                 request.has_header("User-Agent")
                     ? request.get_header_value("User-Agent")
-                    : "unknown"
+                    : "unknown",
+                body.value("device_name", ""),
+                body.value("device_type", "unknown"),
+                enrollment_profile,
+                requested_username,
+                enrollment_verified
             );
             if (!result.success) {
                 send_json(response, 500, {
@@ -1426,8 +1548,11 @@ int main() {
                 audit_logger.write({
                     {"event_type", "DEVICE_CONNECTION_REQUESTED"},
                     {"device_id", device_id},
-                    {"location_id", location_id},
-                    {"username", subject->username},
+                    {"location_id", profile_location},
+                    {"username", requested_username},
+                    {"enrollment_profile", enrollment_profile},
+                    {"trust_level", profile_trust},
+                    {"enrollment_verified", enrollment_verified},
                     {"reason_code", "PENDING_ADMIN_APPROVAL"},
                     {"severity", "medium"}
                 });
@@ -1436,6 +1561,7 @@ int main() {
             send_json(response, 202, {
                 {"status", "PENDING_ADMIN_APPROVAL"},
                 {"device_id", device_id},
+                {"enrollment_verified", enrollment_verified},
                 {"message", "Yeu cau da duoc gui den quan tri vien"}
             });
         } catch (const json::exception&) {
@@ -1464,6 +1590,11 @@ int main() {
                 {"location_id", pending.location_id},
                 {"source_ip", pending.source_ip},
                 {"user_agent", pending.user_agent},
+                {"device_name", pending.device_name},
+                {"device_type", pending.device_type},
+                {"enrollment_profile", pending.enrollment_profile},
+                {"requested_username", pending.requested_username},
+                {"enrollment_verified", pending.enrollment_verified},
                 {"first_seen", pending.first_seen},
                 {"last_seen", pending.last_seen},
                 {"attempt_count", pending.attempt_count}
@@ -1494,7 +1625,10 @@ int main() {
                     body.value("device_id", ""),
                     body.value("trust_level", 0),
                     body.value("location_id", ""),
-                    body.value("assigned_username", "")
+                    body.value("assigned_username", ""),
+                    body.value("device_name", ""),
+                    body.value("device_type", "unknown"),
+                    body.value("enrollment_profile", "manual")
                 );
 
             if (!result.success) {
@@ -1539,7 +1673,10 @@ int main() {
                 {"device", {
                     {"id", result.device_id},
                     {"trust_level", result.trust_level},
-                    {"location_id", result.location_id}
+                    {"location_id", result.location_id},
+                    {"device_name", result.device_name},
+                    {"device_type", result.device_type},
+                    {"enrollment_profile", result.enrollment_profile}
                 }},
                 {"pending_request_resolved", request_resolved},
                 // Chi tra ve key tai thoi diem cap phat. Audit va policy khong luu key dang ro.
@@ -1601,6 +1738,49 @@ int main() {
             {"message", result.message},
             {"device_id", result.device_id}
         });
+    });
+
+    server.Post("/api/devices/block", [
+        &auth_service,
+        &device_management_service,
+        &audit_logger
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto admin =
+            authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) {
+            return;
+        }
+        try {
+            const json body = json::parse(request.body);
+            const DeviceOperationResult result =
+                device_management_service.block(body.value("device_id", ""));
+            if (!result.success) {
+                const int status = result.code == "DEVICE_NOT_FOUND" ? 404 : 400;
+                send_json(response, status, {
+                    {"error", result.code},
+                    {"message", result.message}
+                });
+                return;
+            }
+            audit_logger.write({
+                {"event_type", "DEVICE_BLOCKED"},
+                {"actor", admin->username},
+                {"device_id", result.device_id},
+                {"trust_level", result.trust_level},
+                {"location_id", result.location_id},
+                {"reason_code", "DEVICE_BLOCKED_BY_ADMIN"},
+                {"severity", "critical"}
+            });
+            send_json(response, 200, {
+                {"message", result.message},
+                {"device_id", result.device_id}
+            });
+        } catch (const json::exception&) {
+            send_json(response, 400, {{"error", "INVALID_JSON"}});
+        }
     });
 
     server.Delete("/api/devices/permanent", [

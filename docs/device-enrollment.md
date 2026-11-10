@@ -9,8 +9,8 @@ PoC. Tep nay khong chua khoa bi mat.
 `registered: true`. Moi khoa chi duoc sinh mot lan; chay lai cong cu khong lam
 doi khoa cua thiet bi da cap.
 
-Moi buoc cap phat deu in ra terminal va ghi su kien JSON vao
-`data/audit.jsonl`, de co the xem bang Dashboard sau khi ZTAS khoi dong.
+Moi buoc cap phat deu ghi su kien JSON theo ngay vao `data/logs/`, de co the
+xem bang Dashboard sau khi ZTAS khoi dong.
 
 ## Tep duoc tao
 
@@ -48,7 +48,40 @@ ZTAS kiem tra khoa truoc, sau do chi gui `key_verified: true/false` cho OPA.
 OPA ap dung rule `ZTAS-1004 / DEVICE_KEY_INVALID` neu khoa sai hoac bi thieu.
 Khoa bi mat khong bao gio duoc dua vao Rego hay audit log.
 
-## Them mot thiet bi moi
+## Quy trinh khuyen dung: ma dang ky mot lan va phe duyet
+
+Day la luong dung cho Ubuntu VM, Windows VM va Docker client. Chi ZTAS trung
+tam chay tren MacBook ghi policy, cap Device Key va ghi audit log.
+
+1. Admin mo Dashboard, chon **Cap ma dang ky**.
+2. Chon profile va tai khoan se dung thiet bi:
+
+   | Profile | Trust | Vung mac dinh |
+   | --- | ---: | --- |
+   | `guest` | 1 | `external-network` |
+   | `unmanaged` | 2 | `external-network` |
+   | `managed-vm` | 3 | `lab-network` |
+   | `trusted` | 4 | `campus-network` |
+   | `secure` | 5 | `secure-zone` |
+
+3. Gui ma cho VM/client. Ma chi dung mot lan va mac dinh het han sau 10 phut.
+4. Tren VM/client, gui yeu cau ket noi. Vi du tu Ubuntu:
+
+   ```bash
+   export ZTAS_URL=http://192.168.2.10:8020
+   curl -i -X POST "$ZTAS_URL/api/connection-requests" \
+     -H 'Content-Type: application/json' \
+     -d '{"device_id":"ubuntu-vm-01","device_name":"Ubuntu VMware","device_type":"ubuntu","enrollment_code":"enr_DAN_MA_O_DAY"}'
+   ```
+
+5. Yeu cau chi hien trong hang cho `PENDING_APPROVAL`. Chua co Device Key nen
+   khong the truy cap CSDL.
+6. Admin nhan **Phan loai & cap quyen**, kiem tra profile, tai khoan, Trust va
+   vung mang, roi cap phat. ZTAS tra Device Key mot lan va xoa yeu cau cho.
+7. Luu file `.env` vua tai vao dung VM/client. Chi sau do thiet bi moi co the
+   gui yeu cau tai nguyen va duoc OPA danh gia.
+
+## Them thu cong mot thiet bi moi
 
 1. Them ban ghi vao `policies/devices.json` va dat `registered: true`.
 2. Chay lai `provision_devices`.

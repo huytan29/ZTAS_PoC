@@ -43,6 +43,8 @@ const eventTitles = {
   DEVICE_DISCOVERED: "Phát hiện thiết bị mới chờ phê duyệt",
   DEVICE_CONNECTION_REQUESTED: "Thiết bị gửi yêu cầu kết nối",
   DEVICE_CONNECTION_APPROVED: "Đã duyệt yêu cầu kết nối",
+  DEVICE_BLOCKED: "Đã chặn thiết bị",
+  ENROLLMENT_CODE_ISSUED: "Đã cấp mã đăng ký một lần",
   USER_CREATED: "Đã tạo tài khoản truy cập",
   USER_DELETED: "Đã xóa vĩnh viễn tài khoản",
   USER_DEVICE_ASSIGNED: "Đã gán tài khoản với thiết bị",
