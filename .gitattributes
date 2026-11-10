@@ -1,0 +1,5 @@
+# Keep build files runnable when the repository is shared between Windows and macOS.
+Makefile text eol=lf
+CMakeLists.txt text eol=lf
+CMakePresets.json text eol=lf
+vcpkg.json text eol=lf

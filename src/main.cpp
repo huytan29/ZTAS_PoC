@@ -555,6 +555,9 @@ int main() {
     const std::string logs_file =
         env_or_default("LOGS_FILE", "web/logs.html");
 
+    const std::string accounts_file =
+        env_or_default("ACCOUNTS_FILE", "web/accounts.html");
+
     const std::string setup_file =
         env_or_default("SETUP_FILE", "web/setup.html");
 
@@ -689,6 +692,20 @@ int main() {
         send_text_file(response, logs_file, "text/html; charset=utf-8");
     });
 
+    server.Get("/accounts", [
+        &auth_service,
+        &accounts_file
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        if (!has_admin_session(request, auth_service)) {
+            response.set_redirect("/admin/login?next=/accounts");
+            return;
+        }
+        send_text_file(response, accounts_file, "text/html; charset=utf-8");
+    });
+
     server.Get("/setup", [&setup_file](
         const httplib::Request&,
         httplib::Response& response
@@ -747,6 +764,39 @@ int main() {
         send_text_file(
             response,
             web_assets_directory + "/logs.js",
+            "application/javascript; charset=utf-8"
+        );
+    });
+
+    server.Get("/assets/accounts.css", [&web_assets_directory](
+        const httplib::Request&,
+        httplib::Response& response
+    ) {
+        send_text_file(
+            response,
+            web_assets_directory + "/accounts.css",
+            "text/css; charset=utf-8"
+        );
+    });
+
+    server.Get("/assets/common.js", [&web_assets_directory](
+        const httplib::Request&,
+        httplib::Response& response
+    ) {
+        send_text_file(
+            response,
+            web_assets_directory + "/common.js",
+            "application/javascript; charset=utf-8"
+        );
+    });
+
+    server.Get("/assets/accounts.js", [&web_assets_directory](
+        const httplib::Request&,
+        httplib::Response& response
+    ) {
+        send_text_file(
+            response,
+            web_assets_directory + "/accounts.js",
             "application/javascript; charset=utf-8"
         );
     });
@@ -1089,6 +1139,54 @@ int main() {
         } catch (const json::exception&) {
             send_json(response, 400, {{"error", "INVALID_JSON"}});
         }
+    });
+
+    server.Delete("/api/users", [
+        &auth_service,
+        &audit_logger
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto admin =
+            authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) {
+            return;
+        }
+
+        if (!request.has_param("username")) {
+            send_json(response, 400, {{"error", "USERNAME_REQUIRED"}});
+            return;
+        }
+
+        const UserDeletionResult result = auth_service.delete_user(
+            request.get_param_value("username"),
+            admin->username
+        );
+
+        if (!result.success) {
+            const int status = result.code == "USER_NOT_FOUND" ? 404 :
+                (result.code == "SELF_DELETION_FORBIDDEN" ||
+                 result.code == "LAST_ADMIN_PROTECTED" ? 409 : 400);
+            send_json(response, status, {
+                {"error", result.code},
+                {"message", result.message}
+            });
+            return;
+        }
+
+        audit_logger.write({
+            {"event_type", "USER_DELETED"},
+            {"actor", admin->username},
+            {"username", result.username},
+            {"reason_code", "USER_PERMANENTLY_DELETED"},
+            {"severity", "high"}
+        });
+
+        send_json(response, 200, {
+            {"message", result.message},
+            {"username", result.username}
+        });
     });
 
     // May moi da dang nhap bang tai khoan co the tu khai bao thong tin o day.
@@ -1610,7 +1708,7 @@ int main() {
         );
     });
 
-    std::cout << "ZTAS is running at http://poc-ptit.localhost:8020" << std::endl;
+    std::cout << "ZTAS is running at http://localhost:8020" << std::endl;
 
     if (!server.listen("0.0.0.0", 8020)) {
         std::cerr << "Khong the mo cong 8020: "

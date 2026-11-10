@@ -6,6 +6,7 @@
   <title>ZTAS | Dashboard thiết bị</title>
   <link rel="stylesheet" href="/assets/common.css">
   <link rel="stylesheet" href="/assets/dashboard.css">
+  <script defer src="/assets/common.js"></script>
   <script defer src="/assets/dashboard.js"></script>
 </head>
 <body>
@@ -18,6 +19,8 @@
       <nav class="navigation" aria-label="Điều hướng chính">
         <a class="navigation__link navigation__link--active" href="/dashboard">Thiết bị</a>
         <a class="navigation__link" href="/logs">Nhật ký</a>
+        <a class="navigation__link" href="/accounts">Tài khoản</a>
+        <button class="theme-toggle" data-theme-toggle type="button" aria-pressed="false"></button>
         <button class="navigation__logout" id="logout-button" type="button">Đăng xuất</button>
         <span class="service-status" id="connection-status">
           <i class="status-dot"></i>Đang kết nối
@@ -110,22 +113,6 @@
       </div>
     </section>
 
-    <section class="account-section">
-      <header class="section-heading">
-        <div>
-          <h2>Tài khoản truy cập</h2>
-          <p>Admin tạo tài khoản trước; chỉ tài khoản đã được gán với thiết bị được duyệt mới có thể truy cập dữ liệu.</p>
-        </div>
-        <div class="section-heading__actions">
-          <span id="account-count">0 tài khoản</span>
-          <button class="button button--primary" id="add-user-button">+ Tạo tài khoản</button>
-        </div>
-      </header>
-      <div class="account-table-wrap" id="account-list">
-        <p class="empty-state">Đang tải tài khoản…</p>
-      </div>
-    </section>
-
     <section class="connection-request-section">
       <header class="section-heading">
         <div>
@@ -175,16 +162,6 @@
       <label class="form-field">Tài khoản được gán<select name="assigned_username" required><option value="">Đang tải tài khoản…</option></select><small>Thiết bị chỉ xuất hiện Dashboard sau khi gán tài khoản.</small></label>
       <p class="form-message" id="enroll-device-message"></p>
       <footer class="modal__footer"><button class="button button--secondary" type="button" data-close-dialog="enroll-device-dialog">Hủy</button><button class="button button--primary" type="submit">Cấp phát thiết bị</button></footer>
-    </form>
-  </dialog>
-
-  <dialog class="modal" id="create-user-dialog">
-    <form class="modal__card" id="create-user-form">
-      <header class="modal__header"><div><h2>Tạo tài khoản truy cập</h2><p>Mật khẩu khởi tạo sẽ là <strong>ptit@123</strong>. Người dùng cần được gán thiết bị đã duyệt trước khi truy cập dữ liệu.</p></div><button class="icon-button" type="button" data-close-dialog="create-user-dialog">×</button></header>
-      <label class="form-field">Tên đăng nhập<input name="username" placeholder="nguyen.van.a" pattern="[a-z0-9][a-z0-9._-]{2,31}" autocomplete="off" required><small>3–32 ký tự: chữ thường, số, dấu chấm, gạch ngang hoặc gạch dưới.</small></label>
-      <label class="form-field">Vai trò<select name="role" required><option value="employee">Nhân viên — employee</option><option value="manager">Quản lý — manager</option><option value="engineer">Kỹ sư — engineer</option><option value="guest">Khách tạm thời — guest</option><option value="admin">Quản trị viên — admin</option></select></label>
-      <p class="form-message" id="create-user-message"></p>
-      <footer class="modal__footer"><button class="button button--secondary" type="button" data-close-dialog="create-user-dialog">Hủy</button><button class="button button--primary" type="submit">Tạo tài khoản</button></footer>
     </form>
   </dialog>
 

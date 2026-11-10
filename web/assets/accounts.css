@@ -1,0 +1,22 @@
+.accounts-panel { overflow: visible; }
+.accounts-panel__heading { margin: 0; padding: 18px 20px; border-bottom: 1px solid var(--line); }
+.account-table-wrap { overflow-x: auto; }
+.account-table { width: 100%; min-width: 820px; border-collapse: collapse; text-align: left; }
+.account-table th { padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--surface-alt); color: var(--muted); font-size: 11px; font-weight: 760; letter-spacing: .35px; text-transform: uppercase; white-space: nowrap; }
+.account-table td { padding: 13px 16px; border-bottom: 1px solid var(--line); color: var(--ink); font-size: 13px; vertical-align: middle; }
+.account-table tbody tr:last-child td { border-bottom: 0; }
+.account-table tbody tr:hover { background: var(--surface-hover); }
+.account-table__devices { color: var(--muted) !important; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px !important; }
+.account-table__actions { white-space: nowrap; }
+.role-badge { display: inline-block; padding: 5px 8px; border-radius: 999px; font-size: 11px; font-weight: 760; }
+.role-badge--admin { background: #f1eafd; color: #7143a7; }.role-badge--manager { background: #edf3ff; color: #2868e7; }.role-badge--engineer { background: #e8f8f5; color: #007a67; }.role-badge--employee { background: #e7f8f0; color: #0a9561; }.role-badge--guest { background: #fff4dc; color: #a56600; }
+.account-self { color: var(--muted); font-size: 12px; font-style: italic; }
+.button { cursor: pointer; border: 1px solid transparent; border-radius: 7px; padding: 8px 11px; font: inherit; font-weight: 720; }
+.button--primary { background: var(--blue); color: #fff; }.button--primary:hover { background: #1857d1; }
+.button--secondary { border-color: var(--line); background: var(--surface); color: var(--ink); }.button--secondary:hover { background: var(--surface-alt); }
+.button--danger { background: var(--red); color: #fff; }.button--danger:hover { filter: brightness(.9); }.button--danger-outline { border-color: #edb9c2; background: var(--surface); color: var(--red); }.button--danger-outline:hover { background: var(--red-soft); }
+.button--small { padding: 6px 9px; font-size: 11px; }
+.modal { width: min(100% - 32px, 470px); padding: 0; border: 0; border-radius: 14px; background: var(--surface); color: var(--ink); box-shadow: 0 24px 60px rgba(18, 35, 61, .28); }
+.modal::backdrop { background: rgba(11, 25, 44, .48); }.modal__card { display: grid; gap: 15px; padding: 22px; }.modal__header { display: flex; justify-content: space-between; gap: 14px; }.modal__header h2 { margin: 0; font-size: 18px; }.modal__header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }.icon-button { cursor: pointer; width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 24px; line-height: 1; }.icon-button:hover { background: var(--surface-alt); }
+.form-field { display: grid; gap: 6px; color: var(--ink); font-size: 12px; font-weight: 700; }.form-field input, .form-field select { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--control-bg); color: var(--ink); font: inherit; font-weight: 500; }.form-field input:focus, .form-field select:focus { outline: 2px solid #a9c8ff; border-color: var(--blue); }.form-field small { color: var(--muted); font-weight: 500; }.form-message { min-height: 20px; margin: 0; color: var(--red); font-size: 12px; }.modal__footer { display: flex; justify-content: end; gap: 9px; }.warning-box { padding: 11px; border-radius: 8px; background: var(--red-soft); color: var(--red); font-size: 13px; }
+@media (max-width: 560px) { .accounts-panel__heading { align-items: start; flex-direction: column; }.section-heading__actions { width: 100%; justify-content: space-between; } }

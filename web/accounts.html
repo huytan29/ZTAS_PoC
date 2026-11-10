@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZTAS | Tài khoản truy cập</title>
+  <link rel="stylesheet" href="/assets/common.css">
+  <link rel="stylesheet" href="/assets/accounts.css">
+  <script defer src="/assets/common.js"></script>
+  <script defer src="/assets/accounts.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar__content">
+      <a class="brand" href="/dashboard"><span class="brand__mark">◆</span><span>PoC PTIT Security Console</span></a>
+      <nav class="navigation" aria-label="Điều hướng chính">
+        <a class="navigation__link" href="/dashboard">Thiết bị</a>
+        <a class="navigation__link" href="/logs">Nhật ký</a>
+        <a class="navigation__link navigation__link--active" href="/accounts">Tài khoản</a>
+        <button class="theme-toggle" data-theme-toggle type="button" aria-pressed="false"></button>
+        <button class="navigation__logout" id="logout-button" type="button">Đăng xuất</button>
+        <span class="service-status" id="connection-status"><i class="status-dot"></i>Đang kết nối</span>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page-container">
+    <section class="page-heading">
+      <div>
+        <h1>Tài khoản truy cập</h1>
+        <p>Tạo, xem và xóa vĩnh viễn tài khoản được phép truy cập vào hệ thống.</p>
+      </div>
+      <time class="last-updated" id="last-updated">Chưa có dữ liệu</time>
+    </section>
+
+    <section class="panel accounts-panel">
+      <header class="section-heading accounts-panel__heading">
+        <div><h2>Danh sách tài khoản</h2><p>Token của tài khoản bị xóa sẽ mất hiệu lực ngay lập tức.</p></div>
+        <div class="section-heading__actions"><span id="account-count">0 tài khoản</span><button class="button button--primary" id="add-user-button" type="button">+ Tạo tài khoản</button></div>
+      </header>
+      <div class="account-table-wrap" id="account-list"><p class="empty-state">Đang tải tài khoản…</p></div>
+    </section>
+  </main>
+
+  <dialog class="modal" id="create-user-dialog">
+    <form class="modal__card" id="create-user-form">
+      <header class="modal__header"><div><h2>Tạo tài khoản truy cập</h2><p>Mật khẩu khởi tạo là <strong>ptit@123</strong>. Cần gán thiết bị trước khi truy cập dữ liệu.</p></div><button class="icon-button" type="button" data-close-dialog="create-user-dialog">×</button></header>
+      <label class="form-field">Tên đăng nhập<input name="username" placeholder="nguyen.van.a" pattern="[a-z0-9][a-z0-9._-]{2,31}" autocomplete="off" required><small>3–32 ký tự: chữ thường, số, dấu chấm, gạch ngang hoặc gạch dưới.</small></label>
+      <label class="form-field">Vai trò<select name="role" required><option value="employee">Nhân viên — employee</option><option value="manager">Quản lý — manager</option><option value="engineer">Kỹ sư — engineer</option><option value="guest">Khách tạm thời — guest</option><option value="admin">Quản trị viên — admin</option></select></label>
+      <p class="form-message" id="create-user-message"></p>
+      <footer class="modal__footer"><button class="button button--secondary" type="button" data-close-dialog="create-user-dialog">Hủy</button><button class="button button--primary" type="submit">Tạo tài khoản</button></footer>
+    </form>
+  </dialog>
+
+  <dialog class="modal" id="delete-user-dialog">
+    <section class="modal__card">
+      <header class="modal__header"><div><h2>Xóa vĩnh viễn tài khoản</h2><p id="delete-user-text"></p></div><button class="icon-button" type="button" data-close-dialog="delete-user-dialog">×</button></header>
+      <div class="warning-box">Thao tác này không thể hoàn tác. Token đang hoạt động của tài khoản này sẽ bị vô hiệu hóa ngay.</div>
+      <p class="form-message" id="delete-user-message"></p>
+      <footer class="modal__footer"><button class="button button--secondary" type="button" data-close-dialog="delete-user-dialog">Hủy</button><button class="button button--danger" id="confirm-delete-user" type="button">Xóa vĩnh viễn</button></footer>
+    </section>
+  </dialog>
+</body>
+</html>

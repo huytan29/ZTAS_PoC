@@ -2,11 +2,11 @@
 .log-panel__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 17px 20px; border-bottom: 1px solid var(--line); }
 .log-controls { display:flex; flex-wrap:wrap; align-items:end; justify-content:end; gap:10px; }
 .log-day-picker { display:grid; gap:4px; color:var(--muted); font-size:11px; font-weight:700; }
-.log-day-picker input { min-height:32px; padding:5px 8px; border:1px solid var(--line); border-radius:7px; background:#fff; color:var(--ink); font:inherit; }
+.log-day-picker input { min-height:32px; padding:5px 8px; border:1px solid var(--line); border-radius:7px; background:var(--control-bg); color:var(--ink); font:inherit; }
 .log-day-picker input:focus { outline:2px solid #a9c8ff; border-color:var(--blue); }
 .log-filter { display: flex; flex-wrap: wrap; justify-content: end; gap: 5px; }
-.log-filter__button { cursor: pointer; padding: 7px 9px; border: 0; border-radius: 7px; background: transparent; color: #596b83; font: inherit; font-size: 12px; font-weight: 680; }
-.log-filter__button:hover { background: #f2f6fb; }
+.log-filter__button { cursor: pointer; padding: 7px 9px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 680; }
+.log-filter__button:hover { background: var(--surface-alt); }
 .log-filter__button--active { background: var(--blue-soft); color: var(--blue); }
 .log-list { padding: 6px 16px 13px; }
 
@@ -21,7 +21,7 @@
 .log-event__title { font-weight: 750; }
 .log-event__detail { margin-top: 3px; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
 .log-event__chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.event-chip { max-width: 100%; padding: 3px 7px; overflow: hidden; border: 1px solid var(--line); border-radius: 5px; background: #fafbfd; color: #62748a; font-size: 11px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
+.event-chip { max-width: 100%; padding: 3px 7px; overflow: hidden; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-alt); color: var(--muted); font-size: 11px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
 .log-event__side { min-width: 126px; text-align: right; }
 .log-event__time { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .effect-pill { display: inline-block; margin-top: 7px; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 780; }

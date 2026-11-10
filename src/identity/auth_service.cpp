@@ -447,6 +447,9 @@ PasswordSetupResult AuthService::set_initial_admin_password(
     try {
         std::ifstream file(users_file_);
         json users_data = json::parse(file);
+        // Windows khong cho thay the tep dang mo. Dong handle doc truoc khi
+        // write_users_data() doi ten tep tam de cap nhat du lieu atomically.
+        file.close();
 
         for (auto& user : users_data.at("users")) {
             if (user.value("username", "") != "admin" ||
@@ -516,6 +519,8 @@ UserProvisioningResult AuthService::create_user(
     try {
         std::ifstream file(users_file_);
         json users_data = json::parse(file);
+        // Can dong handle doc truoc khi thay the users.json tren Windows.
+        file.close();
         if (!users_data.contains("users") || !users_data["users"].is_array()) {
             return {false, "INVALID_USERS_STORE", "Kho tai khoan khong dung dinh dang", "", ""};
         }
@@ -564,6 +569,70 @@ UserProvisioningResult AuthService::create_user(
             "",
             ""
         };
+    }
+}
+
+UserDeletionResult AuthService::delete_user(
+    const std::string& username,
+    const std::string& actor_username
+) const {
+    if (username.empty()) {
+        return {false, "USERNAME_REQUIRED", "Can chi dinh tai khoan can xoa", ""};
+    }
+
+    if (username == actor_username) {
+        return {
+            false,
+            "SELF_DELETION_FORBIDDEN",
+            "Khong the xoa tai khoan admin dang dang nhap",
+            ""
+        };
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    try {
+        std::ifstream file(users_file_);
+        json users_data = json::parse(file);
+        // Can dong handle doc truoc khi thay the users.json tren Windows.
+        file.close();
+        if (!users_data.contains("users") || !users_data["users"].is_array()) {
+            return {false, "INVALID_USERS_STORE", "Kho tai khoan khong dung dinh dang", ""};
+        }
+
+        auto& users = users_data["users"];
+        const auto target = std::find_if(
+            users.begin(), users.end(),
+            [&username](const json& user) {
+                return user.value("username", "") == username;
+            }
+        );
+
+        if (target == users.end()) {
+            return {false, "USER_NOT_FOUND", "Khong tim thay tai khoan", ""};
+        }
+
+        if (target->value("role", "") == "admin") {
+            const auto admin_count = std::count_if(
+                users.begin(), users.end(),
+                [](const json& user) {
+                    return user.value("role", "") == "admin";
+                }
+            );
+            if (admin_count <= 1) {
+                return {
+                    false,
+                    "LAST_ADMIN_PROTECTED",
+                    "Khong the xoa tai khoan admin cuoi cung",
+                    ""
+                };
+            }
+        }
+
+        users.erase(target);
+        write_users_data(users_file_, users_data);
+        return {true, "USER_DELETED", "Da xoa vinh vien tai khoan", username};
+    } catch (const std::exception& error) {
+        return {false, "USER_DELETION_ERROR", error.what(), ""};
     }
 }
 
@@ -654,16 +723,36 @@ std::optional<AccessSubject> AuthService::verify_token(
             return std::nullopt;
         }
 
-        return AccessSubject{
-            username,
-            role,
-            auth_level,
-            payload.value(
-                "allowed_device_ids",
-                std::vector<std::string>{}
-            ),
-            account_expires_at
-        };
+        // Token dung ky van phai tham chieu tai khoan con ton tai. Vi vay
+        // xoa tai khoan co hieu luc ngay, thay vi cho token 15 phut het han.
+        std::lock_guard<std::mutex> lock(mutex_);
+        std::ifstream file(users_file_);
+        const json users_data = json::parse(file);
+        for (const auto& user : users_data.at("users")) {
+            if (user.value("username", "") != username ||
+                user.value("role", "") != role) {
+                continue;
+            }
+
+            const long long configured_expiry =
+                user.value("expires_at", 0LL);
+            if (configured_expiry > 0 && configured_expiry <= now) {
+                return std::nullopt;
+            }
+
+            return AccessSubject{
+                username,
+                role,
+                auth_level,
+                user.value(
+                    "allowed_device_ids",
+                    std::vector<std::string>{}
+                ),
+                account_expires_at
+            };
+        }
+
+        return std::nullopt;
     } catch (const std::exception&) {
         return std::nullopt;
     }

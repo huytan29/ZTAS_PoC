@@ -20,6 +20,13 @@ struct UserProvisioningResult {
     std::string role;
 };
 
+struct UserDeletionResult {
+    bool success = false;
+    std::string code;
+    std::string message;
+    std::string username;
+};
+
 class AuthService {
 public:
     AuthService(
@@ -51,6 +58,13 @@ public:
     UserProvisioningResult create_user(
         const std::string& username,
         const std::string& role
+    ) const;
+
+    // Xoa vinh vien tai khoan va vo hieu hoa ngay token cua tai khoan do.
+    // Khong cho phep tu xoa admin dang dang nhap hoac admin cuoi cung.
+    UserDeletionResult delete_user(
+        const std::string& username,
+        const std::string& actor_username
     ) const;
 
 private:

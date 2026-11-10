@@ -43,6 +43,7 @@ const eventTitles = {
   DEVICE_CONNECTION_REQUESTED: "Thiết bị gửi yêu cầu kết nối",
   DEVICE_CONNECTION_APPROVED: "Đã duyệt yêu cầu kết nối",
   USER_CREATED: "Đã tạo tài khoản truy cập",
+  USER_DELETED: "Đã xóa vĩnh viễn tài khoản",
   ADMIN_PASSWORD_CONFIGURED: "Đã thiết lập mật khẩu quản trị"
 };
 

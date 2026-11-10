@@ -6,6 +6,7 @@
   <title>ZTAS | Nhật ký an ninh</title>
   <link rel="stylesheet" href="/assets/common.css">
   <link rel="stylesheet" href="/assets/logs.css">
+  <script defer src="/assets/common.js"></script>
   <script defer src="/assets/logs.js"></script>
 </head>
 <body>
@@ -18,6 +19,8 @@
       <nav class="navigation" aria-label="Điều hướng chính">
         <a class="navigation__link" href="/dashboard">Thiết bị</a>
         <a class="navigation__link navigation__link--active" href="/logs">Nhật ký</a>
+        <a class="navigation__link" href="/accounts">Tài khoản</a>
+        <button class="theme-toggle" data-theme-toggle type="button" aria-pressed="false"></button>
         <button class="navigation__logout" id="logout-button" type="button">Đăng xuất</button>
         <span class="service-status" id="connection-status">
           <i class="status-dot"></i>Đang kết nối

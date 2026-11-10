@@ -1,0 +1,50 @@
+{
+  "version": 2,
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_CXX_STANDARD": "17",
+        "CMAKE_CXX_STANDARD_REQUIRED": "ON"
+      }
+    },
+    {
+      "name": "macos",
+      "displayName": "macOS (Homebrew)",
+      "inherits": "base",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/macos",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    },
+    {
+      "name": "windows",
+      "displayName": "Windows x64 (MinGW-w64 + vcpkg)",
+      "inherits": "base",
+      "generator": "MinGW Makefiles",
+      "binaryDir": "${sourceDir}/build/windows",
+      "environment": {
+        "VCPKG_DEFAULT_TRIPLET": "x64-mingw-static",
+        "VCPKG_DEFAULT_HOST_TRIPLET": "x64-mingw-static"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "x64-mingw-static"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "macos",
+      "configurePreset": "macos",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "windows",
+      "configurePreset": "windows"
+    }
+  ]
+}

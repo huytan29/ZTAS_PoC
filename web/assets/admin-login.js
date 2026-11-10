@@ -2,7 +2,7 @@ const form = document.querySelector("#admin-login-form");
 const message = document.querySelector("#login-message");
 const submit = form.querySelector("button[type=submit]");
 const next = new URLSearchParams(location.search).get("next");
-const target = next === "/logs" ? "/logs" : "/dashboard";
+const target = ["/logs", "/accounts"].includes(next) ? next : "/dashboard";
 
 form.addEventListener("submit", async event => {
   event.preventDefault();

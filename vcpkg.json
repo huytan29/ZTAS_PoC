@@ -1,0 +1,11 @@
+{
+  "name": "ztas-poc",
+  "version-string": "1.0.0",
+  "description": "Zero Trust Access System proof of concept",
+  "dependencies": [
+    "cpp-httplib",
+    "nlohmann-json",
+    "openssl",
+    "sqlite3"
+  ]
+}

@@ -49,8 +49,8 @@ khi hoàn tất bốn thông tin trên.
 
 ## 3. VMware VM
 
-`poc-ptit.localhost` chỉ có ý nghĩa trên MacBook host. Trong VMware, dùng IP của
-MacBook trên mạng mà VM nhìn thấy, ví dụ:
+`localhost` chỉ có ý nghĩa trên chính máy đang chạy ZTAS. Trong VMware, dùng IP
+của máy host (macOS hoặc Windows) trên mạng mà VM nhìn thấy, ví dụ:
 
 ```bash
 export ZTAS_URL="http://<MACBOOK_IP>:8020"
@@ -62,14 +62,15 @@ curl -i "$ZTAS_URL/documents/public" \
   -H "X-Location-ID: $LOCATION_ID"
 ```
 
-Với VMware Bridged, dùng IP Wi-Fi/Ethernet của MacBook. Với NAT, dùng địa chỉ
-gateway/host do VMware cung cấp cho VM. MacBook phải cho phép kết nối tới cổng
-8020 trên mạng lab.
+Với VMware Bridged, dùng IP Wi-Fi/Ethernet của máy host. Với NAT, dùng địa chỉ
+gateway/host do VMware cung cấp cho VM. Máy host phải cho phép kết nối tới cổng
+8020 trên mạng lab. Trên Windows, tạo inbound firewall rule chỉ cho profile và
+subnet lab cần thiết; không mở cổng công khai.
 
 ## 4. Docker device
 
-Docker Desktop trên macOS cung cấp tên `host.docker.internal` để container gọi
-về MacBook host:
+Docker Desktop trên macOS và Windows cung cấp tên `host.docker.internal` để
+container gọi về máy host:
 
 ```bash
 docker run --rm \
