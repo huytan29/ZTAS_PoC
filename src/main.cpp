@@ -1026,10 +1026,69 @@ int main() {
         for (const auto& user : users_data->at("users")) {
             users.push_back({
                 {"username", user.value("username", "")},
-                {"role", user.value("role", "")}
+                {"role", user.value("role", "")},
+                {"allowed_device_ids", user.value(
+                    "allowed_device_ids", json::array()
+                )},
+                {"temporary_session_minutes", user.value(
+                    "temporary_session_minutes", 0
+                )}
             });
         }
         send_json(response, 200, {{"users", users}});
+    });
+
+    // Tai khoan chi duoc tao boi admin. Mat khau khoi tao do AuthService
+    // sinh hash va luu noi bo; API khong bao gio tra password dang ro.
+    server.Post("/api/users", [
+        &auth_service,
+        &audit_logger
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto admin =
+            authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) {
+            return;
+        }
+
+        try {
+            const json body = json::parse(request.body);
+            const UserProvisioningResult result = auth_service.create_user(
+                body.value("username", ""),
+                body.value("role", "")
+            );
+            if (!result.success) {
+                const int status = result.code == "USERNAME_ALREADY_EXISTS"
+                    ? 409
+                    : 400;
+                send_json(response, status, {
+                    {"error", result.code},
+                    {"message", result.message}
+                });
+                return;
+            }
+
+            audit_logger.write({
+                {"event_type", "USER_CREATED"},
+                {"actor", admin->username},
+                {"username", result.username},
+                {"role", result.role},
+                {"reason_code", "INITIAL_PASSWORD_ASSIGNED"},
+                {"severity", "info"}
+            });
+
+            send_json(response, 201, {
+                {"message", result.message},
+                {"user", {
+                    {"username", result.username},
+                    {"role", result.role}
+                }}
+            });
+        } catch (const json::exception&) {
+            send_json(response, 400, {{"error", "INVALID_JSON"}});
+        }
     });
 
     // May moi da dang nhap bang tai khoan co the tu khai bao thong tin o day.

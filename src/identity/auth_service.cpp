@@ -8,6 +8,7 @@
 #include <openssl/rand.h>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -181,6 +182,31 @@ std::string create_password_hash(const std::string& password) {
     return "pbkdf2_sha256$" + std::to_string(iterations) + "$" +
         hex_encode(salt, sizeof(salt)) + "$" +
         hex_encode(derived, sizeof(derived));
+}
+
+bool valid_username(const std::string& username) {
+    if (username.size() < 3 || username.size() > 32) {
+        return false;
+    }
+
+    for (const char character : username) {
+        if (!std::islower(static_cast<unsigned char>(character)) &&
+            !std::isdigit(static_cast<unsigned char>(character)) &&
+            character != '-' && character != '_' && character != '.') {
+            return false;
+        }
+    }
+
+    return username.front() != '-' && username.front() != '_' &&
+        username.front() != '.';
+}
+
+bool valid_role(const std::string& role) {
+    static const std::vector<std::string> allowed_roles = {
+        "admin", "employee", "manager", "engineer", "guest"
+    };
+    return std::find(allowed_roles.begin(), allowed_roles.end(), role) !=
+        allowed_roles.end();
 }
 
 void write_users_data(const std::string& users_file, const json& users_data) {
@@ -460,6 +486,85 @@ PasswordSetupResult AuthService::set_initial_admin_password(
         "ADMIN_USER_NOT_FOUND",
         "Khong tim thay user admin"
     };
+}
+
+UserProvisioningResult AuthService::create_user(
+    const std::string& username,
+    const std::string& role
+) const {
+    if (!valid_username(username)) {
+        return {
+            false,
+            "INVALID_USERNAME",
+            "Username gom 3-32 ky tu thuong, so, dau gach ngang, gach duoi hoac cham",
+            "",
+            ""
+        };
+    }
+
+    if (!valid_role(role)) {
+        return {
+            false,
+            "INVALID_ROLE",
+            "Role khong nam trong danh sach duoc phep",
+            "",
+            ""
+        };
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    try {
+        std::ifstream file(users_file_);
+        json users_data = json::parse(file);
+        if (!users_data.contains("users") || !users_data["users"].is_array()) {
+            return {false, "INVALID_USERS_STORE", "Kho tai khoan khong dung dinh dang", "", ""};
+        }
+
+        for (const auto& user : users_data["users"]) {
+            if (user.value("username", "") == username) {
+                return {
+                    false,
+                    "USERNAME_ALREADY_EXISTS",
+                    "Username nay da ton tai",
+                    "",
+                    ""
+                };
+            }
+        }
+
+        json user = {
+            {"username", username},
+            {"role", role},
+            {"password_hash", create_password_hash("ptit@123")},
+            {"allowed_device_ids", json::array()},
+            {"expires_at", 0}
+        };
+
+        // Tai khoan guest la phien tam thoi trong PoC, con cac role khac
+        // can duoc admin gan thiet bi truoc khi truy cap du lieu.
+        if (role == "guest") {
+            user["temporary_session_minutes"] = 60;
+        }
+
+        users_data["users"].push_back(std::move(user));
+        write_users_data(users_file_, users_data);
+
+        return {
+            true,
+            "USER_CREATED",
+            "Da tao tai khoan voi mat khau khoi tao ptit@123",
+            username,
+            role
+        };
+    } catch (const std::exception& error) {
+        return {
+            false,
+            "USER_CREATION_ERROR",
+            error.what(),
+            "",
+            ""
+        };
+    }
 }
 
 std::string AuthService::issue_token(

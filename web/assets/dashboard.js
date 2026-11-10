@@ -23,6 +23,7 @@ let deviceToRevoke = null;
 let deviceToDelete = null;
 let issuedCredential = null;
 let assignableUsers = [];
+let managedUsers = [];
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, character => ({
@@ -170,6 +171,45 @@ function renderDataZones(zones) {
     </table>`;
 }
 
+function roleLabel(role) {
+  const labels = {
+    admin: "Quản trị viên",
+    employee: "Nhân viên",
+    manager: "Quản lý",
+    engineer: "Kỹ sư",
+    guest: "Khách"
+  };
+  return labels[role] ?? role;
+}
+
+function renderUsers(users) {
+  const container = document.querySelector("#account-list");
+  updateText("#account-count", `${users.length} tài khoản`);
+
+  if (!users.length) {
+    container.innerHTML = '<p class="empty-state">Chưa có tài khoản truy cập.</p>';
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="account-table">
+      <thead><tr><th>Tên đăng nhập</th><th>Vai trò</th><th>Thiết bị được gán</th><th>Phiên truy cập</th></tr></thead>
+      <tbody>${users.map(user => {
+        const devices = user.allowed_device_ids ?? [];
+        const deviceText = devices.length ? devices.join(", ") : "Chưa gán thiết bị";
+        const sessionText = user.temporary_session_minutes > 0
+          ? `Tạm thời ${user.temporary_session_minutes} phút`
+          : "Không giới hạn theo thời gian";
+        return `<tr>
+          <td><strong>${escapeHtml(user.username)}</strong></td>
+          <td><span class="role-badge role-badge--${escapeHtml(user.role)}">${escapeHtml(roleLabel(user.role))}</span></td>
+          <td class="account-table__devices">${escapeHtml(deviceText)}</td>
+          <td>${escapeHtml(sessionText)}</td>
+        </tr>`;
+      }).join("")}</tbody>
+    </table>`;
+}
+
 function renderConnectionRequests(requests) {
   const container = document.querySelector("#connection-request-list");
   const count = document.querySelector("#pending-request-count");
@@ -257,6 +297,19 @@ async function refreshDataZones() {
   }
 }
 
+async function refreshUsers() {
+  const container = document.querySelector("#account-list");
+  try {
+    const response = await fetch("/api/users", { cache: "no-store" });
+    if (!response.ok) throw new Error("Không lấy được tài khoản");
+    const data = await response.json();
+    managedUsers = data.users ?? [];
+    renderUsers(managedUsers);
+  } catch {
+    container.innerHTML = '<p class="empty-state">Không thể tải danh sách tài khoản.</p>';
+  }
+}
+
 async function refreshConnectionRequests() {
   const container = document.querySelector("#connection-request-list");
   try {
@@ -326,6 +379,14 @@ async function openEnrollDialog(deviceId = "", locationId = "lab-network") {
   showDialog("enroll-device-dialog");
 }
 
+function openCreateUserDialog() {
+  const form = document.querySelector("#create-user-form");
+  form.reset();
+  form.elements.role.value = "employee";
+  document.querySelector("#create-user-message").textContent = "";
+  showDialog("create-user-dialog");
+}
+
 function openRevokeDialog(deviceId) {
   deviceToRevoke = deviceId;
   document.querySelector("#revoke-device-text").textContent =
@@ -358,6 +419,10 @@ async function parseResponse(response) {
 
 document.querySelector("#add-device-button").addEventListener("click", () => {
   requireAdmin(() => openEnrollDialog());
+});
+
+document.querySelector("#add-user-button").addEventListener("click", () => {
+  requireAdmin(() => openCreateUserDialog());
 });
 
 document.querySelector("#admin-login-form").addEventListener("submit", async event => {
@@ -419,6 +484,30 @@ document.querySelector("#enroll-device-form").addEventListener("submit", async e
     showDialog("device-key-dialog");
     refreshDashboard();
     refreshConnectionRequests();
+  } catch (error) {
+    message.textContent = error.message;
+  }
+});
+
+document.querySelector("#create-user-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const message = document.querySelector("#create-user-message");
+  message.textContent = "Đang tạo tài khoản…";
+
+  try {
+    const response = await fetch("/api/users", {
+      method: "POST",
+      headers: apiHeaders(),
+      body: JSON.stringify({
+        username: form.elements.username.value.trim(),
+        role: form.elements.role.value
+      })
+    });
+    const data = await parseResponse(response);
+    closeDialog("create-user-dialog");
+    await refreshUsers();
+    alert(`Đã tạo tài khoản ${data.user.username}. Mật khẩu khởi tạo: ptit@123`);
   } catch (error) {
     message.textContent = error.message;
   }
@@ -502,6 +591,7 @@ document.querySelector("#logout-button").addEventListener("click", async () => {
 
 refreshDashboard();
 refreshDataZones();
+refreshUsers();
 refreshConnectionRequests();
 setInterval(() => {
   refreshDashboard();

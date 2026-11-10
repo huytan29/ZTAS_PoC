@@ -42,6 +42,7 @@ const eventTitles = {
   DEVICE_DISCOVERED: "Phát hiện thiết bị mới chờ phê duyệt",
   DEVICE_CONNECTION_REQUESTED: "Thiết bị gửi yêu cầu kết nối",
   DEVICE_CONNECTION_APPROVED: "Đã duyệt yêu cầu kết nối",
+  USER_CREATED: "Đã tạo tài khoản truy cập",
   ADMIN_PASSWORD_CONFIGURED: "Đã thiết lập mật khẩu quản trị"
 };
 

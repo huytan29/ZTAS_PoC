@@ -12,6 +12,14 @@ struct PasswordSetupResult {
     std::string message;
 };
 
+struct UserProvisioningResult {
+    bool success = false;
+    std::string code;
+    std::string message;
+    std::string username;
+    std::string role;
+};
+
 class AuthService {
 public:
     AuthService(
@@ -36,6 +44,13 @@ public:
 
     PasswordSetupResult set_initial_admin_password(
         const std::string& password
+    ) const;
+
+    // Chi duoc goi tu API da xac thuc admin. Mat khau khoi tao cua tai khoan
+    // PoC moi la ptit@123 va chi hash PBKDF2 duoc luu trong users.json.
+    UserProvisioningResult create_user(
+        const std::string& username,
+        const std::string& role
     ) const;
 
 private:
