@@ -27,6 +27,14 @@ struct UserDeletionResult {
     std::string username;
 };
 
+struct DeviceAssignmentResult {
+    bool success = false;
+    std::string code;
+    std::string message;
+    std::string username;
+    std::string device_id;
+};
+
 class AuthService {
 public:
     AuthService(
@@ -65,6 +73,18 @@ public:
     UserDeletionResult delete_user(
         const std::string& username,
         const std::string& actor_username
+    ) const;
+
+    // Gan/go bo lien ket mot tai khoan voi mot thiet bi da duoc he thong
+    // chap thuan. OPA van tu quyet dinh quyen theo role va policy.
+    DeviceAssignmentResult assign_device(
+        const std::string& username,
+        const std::string& device_id
+    ) const;
+
+    DeviceAssignmentResult unassign_device(
+        const std::string& username,
+        const std::string& device_id
     ) const;
 
 private:

@@ -7,6 +7,9 @@ Mọi yêu cầu đi qua ZTAS tại `/documents/...`; ZTAS xác thực tài kho�
 kiểm tra Device Key, gửi ngữ cảnh cho OPA, sau đó mới đọc đúng vùng dữ liệu
 trong SQLite.
 
+ZTAS trung tâm cũng là điểm ghi audit duy nhất. Dù client là Windows, macOS hay
+Linux, chúng phải gọi cùng `ZTAS_URL` để nhật ký liên tục trong một luồng.
+
 ## 1. Máy mới gửi yêu cầu lần đầu
 
 Máy phải khai báo Device ID và vùng mạng dự kiến. Lần đầu chưa có Device Key,

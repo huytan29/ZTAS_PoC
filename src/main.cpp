@@ -916,6 +916,7 @@ int main() {
         send_json(response, 200, {
             {"events", events},
             {"selected_date", selected_date},
+            {"retention_days", 5},
             {"summary", {
                 {"total", events.size()},
                 {"permits", permits},
@@ -924,6 +925,45 @@ int main() {
                 {"errors", errors}
             }}
         });
+    });
+
+    server.Post("/api/audit/save", [
+        &auth_service,
+        &audit_logger
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto admin =
+            authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) {
+            return;
+        }
+
+        try {
+            const json body = json::parse(request.body);
+            const std::string date = body.value("date", "");
+            const AuditSaveResult result = audit_logger.save_day(date);
+            if (!result.success) {
+                const int status = result.code == "AUDIT_LOG_NOT_FOUND" ? 404 : 400;
+                send_json(response, status, {
+                    {"error", result.code},
+                    {"message", result.message}
+                });
+                return;
+            }
+
+            audit_logger.write({
+                {"event_type", "AUDIT_LOG_SAVED"},
+                {"actor", admin->username},
+                {"audit_date", date},
+                {"reason_code", "USER_SAVED_AUDIT_LOG"},
+                {"severity", "info"}
+            });
+            send_json(response, 201, {{"message", result.message}});
+        } catch (const json::exception&) {
+            send_json(response, 400, {{"error", "INVALID_JSON"}});
+        }
     });
 
     server.Get("/api/setup/status", [&auth_service](
@@ -1088,6 +1128,45 @@ int main() {
         send_json(response, 200, {{"users", users}});
     });
 
+    // Chi tra thiet bi da duoc dang ky; thiet bi cho duyet khong duoc gan
+    // tai khoan va khong the co quyen truy cap.
+    server.Get("/api/registered-devices", [
+        &auth_service,
+        &devices_policy_file
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto admin =
+            authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) {
+            return;
+        }
+
+        const auto policy_data = read_json_file(devices_policy_file);
+        if (!policy_data.has_value() ||
+            !policy_data->contains("devices")) {
+            send_json(response, 500, {{"error", "DEVICES_POLICY_FILE_NOT_FOUND"}});
+            return;
+        }
+
+        json devices = json::array();
+        for (auto iterator = policy_data->at("devices").begin();
+             iterator != policy_data->at("devices").end();
+             ++iterator) {
+            const json& device = iterator.value();
+            if (!device.value("registered", false)) {
+                continue;
+            }
+            devices.push_back({
+                {"id", iterator.key()},
+                {"trust_level", device.value("trust_level", 0)},
+                {"location_id", device.value("location_id", "unknown")}
+            });
+        }
+        send_json(response, 200, {{"devices", devices}});
+    });
+
     // Tai khoan chi duoc tao boi admin. Mat khau khoi tao do AuthService
     // sinh hash va luu noi bo; API khong bao gio tra password dang ro.
     server.Post("/api/users", [
@@ -1186,6 +1265,117 @@ int main() {
         send_json(response, 200, {
             {"message", result.message},
             {"username", result.username}
+        });
+    });
+
+    server.Post("/api/user-device-assignments", [
+        &auth_service,
+        &devices_policy_file,
+        &audit_logger
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto admin =
+            authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) {
+            return;
+        }
+
+        try {
+            const json body = json::parse(request.body);
+            const std::string username = body.value("username", "");
+            const std::string device_id = body.value("device_id", "");
+            const auto policy_data = read_json_file(devices_policy_file);
+            const bool registered = policy_data.has_value() &&
+                policy_data->contains("devices") &&
+                policy_data->at("devices").contains(device_id) &&
+                policy_data->at("devices").at(device_id).value("registered", false);
+
+            if (!registered) {
+                send_json(response, 400, {
+                    {"error", "DEVICE_NOT_REGISTERED"},
+                    {"message", "Chi co the gan thiet bi da duoc he thong dang ky"}
+                });
+                return;
+            }
+
+            const DeviceAssignmentResult result =
+                auth_service.assign_device(username, device_id);
+            if (!result.success) {
+                const int status = result.code == "USER_NOT_FOUND" ? 404 :
+                    (result.code == "DEVICE_ALREADY_ASSIGNED" ||
+                     result.code == "GLOBAL_DEVICE_SCOPE_PROTECTED" ? 409 : 400);
+                send_json(response, status, {
+                    {"error", result.code},
+                    {"message", result.message}
+                });
+                return;
+            }
+
+            audit_logger.write({
+                {"event_type", "USER_DEVICE_ASSIGNED"},
+                {"actor", admin->username},
+                {"username", result.username},
+                {"device_id", result.device_id},
+                {"reason_code", "ACCOUNT_DEVICE_BOUND"},
+                {"severity", "info"}
+            });
+            send_json(response, 201, {
+                {"message", result.message},
+                {"username", result.username},
+                {"device_id", result.device_id}
+            });
+        } catch (const json::exception&) {
+            send_json(response, 400, {{"error", "INVALID_JSON"}});
+        }
+    });
+
+    server.Delete("/api/user-device-assignments", [
+        &auth_service,
+        &audit_logger
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto admin =
+            authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) {
+            return;
+        }
+
+        if (!request.has_param("username") || !request.has_param("device_id")) {
+            send_json(response, 400, {{"error", "ASSIGNMENT_CONTEXT_REQUIRED"}});
+            return;
+        }
+
+        const DeviceAssignmentResult result = auth_service.unassign_device(
+            request.get_param_value("username"),
+            request.get_param_value("device_id")
+        );
+        if (!result.success) {
+            const int status = result.code == "USER_NOT_FOUND" ? 404 :
+                (result.code == "DEVICE_NOT_ASSIGNED" ||
+                 result.code == "GLOBAL_DEVICE_SCOPE_PROTECTED" ? 409 : 400);
+            send_json(response, status, {
+                {"error", result.code},
+                {"message", result.message}
+            });
+            return;
+        }
+
+        audit_logger.write({
+            {"event_type", "USER_DEVICE_UNASSIGNED"},
+            {"actor", admin->username},
+            {"username", result.username},
+            {"device_id", result.device_id},
+            {"reason_code", "ACCOUNT_DEVICE_UNBOUND"},
+            {"severity", "medium"}
+        });
+        send_json(response, 200, {
+            {"message", result.message},
+            {"username", result.username},
+            {"device_id", result.device_id}
         });
     });
 

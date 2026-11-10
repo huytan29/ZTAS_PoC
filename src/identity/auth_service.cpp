@@ -636,6 +636,120 @@ UserDeletionResult AuthService::delete_user(
     }
 }
 
+namespace {
+
+DeviceAssignmentResult update_device_assignment(
+    const std::string& users_file,
+    std::mutex& mutex,
+    const std::string& username,
+    const std::string& device_id,
+    bool assign
+) {
+    if (username.empty() || device_id.empty()) {
+        return {
+            false,
+            "ASSIGNMENT_CONTEXT_REQUIRED",
+            "Can chi dinh tai khoan va thiet bi",
+            "",
+            ""
+        };
+    }
+
+    std::lock_guard<std::mutex> lock(mutex);
+    try {
+        std::ifstream file(users_file);
+        json users_data = json::parse(file);
+        file.close();
+        if (!users_data.contains("users") || !users_data["users"].is_array()) {
+            return {false, "INVALID_USERS_STORE", "Kho tai khoan khong dung dinh dang", "", ""};
+        }
+
+        for (auto& user : users_data["users"]) {
+            if (user.value("username", "") != username) {
+                continue;
+            }
+
+            json& allowed = user["allowed_device_ids"];
+            if (!allowed.is_array()) {
+                allowed = json::array();
+            }
+
+            const auto global_scope = std::find(
+                allowed.begin(), allowed.end(), "*"
+            );
+            if (global_scope != allowed.end()) {
+                return {
+                    false,
+                    "GLOBAL_DEVICE_SCOPE_PROTECTED",
+                    "Tai khoan nay co pham vi quan tri toan he thong",
+                    username,
+                    device_id
+                };
+            }
+
+            const auto existing = std::find(
+                allowed.begin(), allowed.end(), device_id
+            );
+            if (assign) {
+                if (existing != allowed.end()) {
+                    return {
+                        false,
+                        "DEVICE_ALREADY_ASSIGNED",
+                        "Tai khoan da duoc gan voi thiet bi nay",
+                        username,
+                        device_id
+                    };
+                }
+                allowed.push_back(device_id);
+            } else {
+                if (existing == allowed.end()) {
+                    return {
+                        false,
+                        "DEVICE_NOT_ASSIGNED",
+                        "Tai khoan chua duoc gan voi thiet bi nay",
+                        username,
+                        device_id
+                    };
+                }
+                allowed.erase(existing);
+            }
+
+            write_users_data(users_file, users_data);
+            return {
+                true,
+                assign ? "USER_DEVICE_ASSIGNED" : "USER_DEVICE_UNASSIGNED",
+                assign ? "Da gan tai khoan voi thiet bi" : "Da go gan ket tai khoan va thiet bi",
+                username,
+                device_id
+            };
+        }
+    } catch (const std::exception& error) {
+        return {false, "DEVICE_ASSIGNMENT_ERROR", error.what(), "", ""};
+    }
+
+    return {false, "USER_NOT_FOUND", "Khong tim thay tai khoan", "", ""};
+}
+
+} // namespace
+
+DeviceAssignmentResult AuthService::assign_device(
+    const std::string& username,
+    const std::string& device_id
+) const {
+    return update_device_assignment(
+        users_file_, mutex_, username, device_id, true
+    );
+}
+
+DeviceAssignmentResult AuthService::unassign_device(
+    const std::string& username,
+    const std::string& device_id
+) const {
+    return update_device_assignment(
+        users_file_, mutex_, username, device_id, false
+    );
+}
+
 std::string AuthService::issue_token(
     const AccessSubject& subject
 ) const {

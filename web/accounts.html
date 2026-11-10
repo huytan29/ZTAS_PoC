@@ -27,16 +27,23 @@
   <main class="page-container">
     <section class="page-heading">
       <div>
+        <p class="page-kicker">Quản trị danh tính</p>
         <h1>Tài khoản truy cập</h1>
-        <p>Tạo, xem và xóa vĩnh viễn tài khoản được phép truy cập vào hệ thống.</p>
+        <p>Cấp mới tài khoản, gán thiết bị và áp dụng quyền truy cập theo policy hệ thống.</p>
       </div>
       <time class="last-updated" id="last-updated">Chưa có dữ liệu</time>
     </section>
 
+    <section class="account-metrics" aria-label="Tổng quan tài khoản">
+      <article class="account-metric"><span>Tổng tài khoản</span><strong id="metric-total-users">0</strong><small>Danh tính đang được quản lý</small></article>
+      <article class="account-metric account-metric--secure"><span>Đã gán thiết bị</span><strong id="metric-bound-users">0</strong><small>Đủ điều kiện để policy đánh giá</small></article>
+      <article class="account-metric account-metric--privileged"><span>Tài khoản quản trị</span><strong id="metric-admin-users">0</strong><small>Được bảo vệ khỏi xóa nhầm</small></article>
+    </section>
+
     <section class="panel accounts-panel">
       <header class="section-heading accounts-panel__heading">
-        <div><h2>Danh sách tài khoản</h2><p>Token của tài khoản bị xóa sẽ mất hiệu lực ngay lập tức.</p></div>
-        <div class="section-heading__actions"><span id="account-count">0 tài khoản</span><button class="button button--primary" id="add-user-button" type="button">+ Tạo tài khoản</button></div>
+        <div><h2>Danh sách tài khoản</h2><p>Role định nghĩa quyền; liên kết thiết bị giới hạn nơi tài khoản được phép sử dụng.</p></div>
+        <div class="section-heading__actions"><span class="account-count-pill" id="account-count">0 tài khoản</span><button class="button button--primary" id="add-user-button" type="button">+ Tạo tài khoản</button></div>
       </header>
       <div class="account-table-wrap" id="account-list"><p class="empty-state">Đang tải tài khoản…</p></div>
     </section>
@@ -58,6 +65,17 @@
       <div class="warning-box">Thao tác này không thể hoàn tác. Token đang hoạt động của tài khoản này sẽ bị vô hiệu hóa ngay.</div>
       <p class="form-message" id="delete-user-message"></p>
       <footer class="modal__footer"><button class="button button--secondary" type="button" data-close-dialog="delete-user-dialog">Hủy</button><button class="button button--danger" id="confirm-delete-user" type="button">Xóa vĩnh viễn</button></footer>
+    </section>
+  </dialog>
+
+  <dialog class="modal" id="assignment-dialog">
+    <section class="modal__card">
+      <header class="modal__header"><div><h2>Gán thiết bị cho tài khoản</h2><p id="assignment-user-label"></p></div><button class="icon-button" type="button" data-close-dialog="assignment-dialog">×</button></header>
+      <div class="permission-box" id="assignment-permission"></div>
+      <div class="assignment-current"><strong>Thiết bị đã gán</strong><div id="assigned-device-list" class="assignment-chip-list"></div></div>
+      <label class="form-field">Thiết bị đã được hệ thống đăng ký<select id="assignment-device-select"><option value="">Đang tải thiết bị…</option></select><small>Chỉ thiết bị đã đăng ký mới có thể được gán vào tài khoản.</small></label>
+      <p class="form-message" id="assignment-message"></p>
+      <footer class="modal__footer"><button class="button button--secondary" type="button" data-close-dialog="assignment-dialog">Đóng</button><button class="button button--primary" id="assign-device-button" type="button">Gán thiết bị</button></footer>
     </section>
   </dialog>
 </body>

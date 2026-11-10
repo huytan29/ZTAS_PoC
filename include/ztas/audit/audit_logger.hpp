@@ -3,7 +3,14 @@
 #include <nlohmann/json.hpp>
 
 #include <cstddef>
+#include <mutex>
 #include <string>
+
+struct AuditSaveResult {
+    bool success = false;
+    std::string code;
+    std::string message;
+};
 
 class AuditLogger {
 public:
@@ -22,9 +29,15 @@ public:
         std::size_t limit
     ) const;
 
-    // Xuat JSONL cua cac ngay da qua thanh XML trong data/archive/.
-    void archive_previous_days() const;
+    // Luu snapshot rieng tai data/saved-logs. Cac ban nay khong bi retention
+    // 5 ngay xoa va co the duoc tai ve tu giao dien.
+    AuditSaveResult save_day(const std::string& date) const;
+
+    // Xoa audit chua luu rieng sau 5 ngay lich. Goi luc khoi dong va sau moi
+    // su kien de quy tac dong nhat tren Windows, macOS va Linux.
+    void purge_expired_logs() const;
 
 private:
     std::string log_directory_;
+    mutable std::mutex mutex_;
 };

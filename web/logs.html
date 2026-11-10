@@ -49,10 +49,11 @@
       <header class="log-panel__header">
         <div>
           <h2>Dòng sự kiện</h2>
-          <p>Chỉ hiển thị log của ngày đang chọn; log ngày cũ được lưu XML trên máy.</p>
+          <p>Log chưa lưu riêng được giữ 5 ngày. Lưu riêng để giữ bản sao và tải về.</p>
         </div>
         <div class="log-controls">
           <label class="log-day-picker">Ngày xem log<input id="log-date" type="date" required></label>
+          <button class="log-save-button" id="save-log-button" type="button">Lưu riêng / tải</button>
           <div class="log-filter" role="group" aria-label="Lọc nhật ký">
             <button class="log-filter__button log-filter__button--active" data-filter="all">Tất cả</button>
             <button class="log-filter__button" data-filter="access">Truy cập</button>

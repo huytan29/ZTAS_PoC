@@ -87,5 +87,21 @@ Không cần thay đổi PowerShell Execution Policy vì dự án không chạy 
 - Server lắng nghe `0.0.0.0:8020` để máy ảo/container trong lab có thể kết nối.
   Chỉ mở firewall cổng này trong mạng lab tin cậy.
 
+## Audit log tập trung và retention
+
+- Audit log hoạt động được giữ **5 ngày lịch** trong `data/logs/`. Khi ZTAS
+  khởi động hoặc ghi sự kiện mới, log cũ hơn 5 ngày sẽ tự xóa.
+- Trên trang **Nhật ký**, chọn ngày rồi dùng **Lưu riêng / tải**. Hệ thống tạo
+  snapshot JSONL tại `data/saved-logs/` và tải một bản JSON về máy; snapshot
+  này không bị retention tự động xóa.
+- Để audit xuyên suốt Windows, macOS và Linux, chỉ chạy **một ZTAS server trung
+  tâm** và cấu hình mọi VM/container/client dùng cùng `ZTAS_URL`. Server này là
+  nơi duy nhất ghi audit, nên log không bị chia thành từng máy build.
+- Có thể đưa log của server trung tâm lên volume bền vững bằng biến môi trường
+  `AUDIT_LOG_DIRECTORY`. Ví dụ đặt `AUDIT_LOG_DIRECTORY=/mnt/ztas-audit/logs`
+  trên Linux/macOS hoặc `AUDIT_LOG_DIRECTORY=E:\ZTAS_Audit\logs` trên Windows
+  trong `runtime/ztas.env`. Không chạy nhiều instance ZTAS cùng ghi vào một thư
+  mục mạng; hãy để một instance trung tâm ghi log.
+
 Xem [hướng dẫn cấp phát thiết bị](docs/device-enrollment.md) và
 [kết nối từ VM/Docker](docs/vmware-docker-device-access.md).

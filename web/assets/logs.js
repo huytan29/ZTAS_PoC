@@ -9,6 +9,7 @@ dateInput.value = localIsoDate();
 dateInput.max = localIsoDate();
 
 const viewState = { filter: "all", fingerprint: "", date: dateInput.value };
+let selectedEvents = [];
 
 const reasonText = {
   DEVICE_KEY_INVALID: "Khóa định danh thiết bị không hợp lệ",
@@ -44,6 +45,9 @@ const eventTitles = {
   DEVICE_CONNECTION_APPROVED: "Đã duyệt yêu cầu kết nối",
   USER_CREATED: "Đã tạo tài khoản truy cập",
   USER_DELETED: "Đã xóa vĩnh viễn tài khoản",
+  USER_DEVICE_ASSIGNED: "Đã gán tài khoản với thiết bị",
+  USER_DEVICE_UNASSIGNED: "Đã gỡ gán tài khoản khỏi thiết bị",
+  AUDIT_LOG_SAVED: "Đã lưu riêng nhật ký audit",
   ADMIN_PASSWORD_CONFIGURED: "Đã thiết lập mật khẩu quản trị"
 };
 
@@ -162,6 +166,7 @@ async function refreshLogs() {
     if (!response.ok) throw new Error("Không lấy được log");
 
     const data = await response.json();
+    selectedEvents = data.events ?? [];
     const fingerprint = JSON.stringify(data.events);
 
     updateMetrics(data.summary);
@@ -194,6 +199,40 @@ dateInput.addEventListener("change", () => {
   viewState.date = dateInput.value;
   viewState.fingerprint = "";
   refreshLogs();
+});
+
+document.querySelector("#save-log-button").addEventListener("click", async event => {
+  const button = event.currentTarget;
+  const originalLabel = button.textContent;
+  button.disabled = true;
+  button.textContent = "Đang lưu…";
+
+  try {
+    const response = await fetch("/api/audit/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date: viewState.date })
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.message || body.error || "Không thể lưu log");
+
+    const content = JSON.stringify({
+      date: viewState.date,
+      retention: "saved-separately",
+      events: selectedEvents
+    }, null, 2);
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([content], { type: "application/json" }));
+    link.download = `ztas-audit-${viewState.date}.json`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    button.textContent = "Đã lưu & tải";
+  } catch (error) {
+    button.textContent = error.message;
+  } finally {
+    button.disabled = false;
+    setTimeout(() => { button.textContent = originalLabel; }, 2500);
+  }
 });
 
 document.querySelector("#logout-button").addEventListener("click", async () => {
