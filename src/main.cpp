@@ -435,6 +435,7 @@ void handle_document_request(
         const DiscoveryResult discovery = discovery_service.record_attempt(
             device_id,
             request.get_header_value("X-Location-ID"),
+            request.remote_addr.empty() ? "unknown" : request.remote_addr,
             request.has_header("User-Agent")
                 ? request.get_header_value("User-Agent")
                 : "unknown"
@@ -1031,9 +1032,103 @@ int main() {
         send_json(response, 200, {{"users", users}});
     });
 
+    // May moi da dang nhap bang tai khoan co the tu khai bao thong tin o day.
+    // Day chi la yeu cau duyet, khong he cap quyen truy cap tai nguyen.
+    server.Post("/api/connection-requests", [
+        &auth_service,
+        &discovery_service,
+        &audit_logger
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto subject = authenticate_request(request, auth_service, response);
+        if (!subject.has_value()) {
+            return;
+        }
+
+        try {
+            const json body = json::parse(request.body);
+            const std::string device_id = body.value("device_id", "");
+            const std::string location_id = body.value("location_id", "unknown");
+            if (device_id.empty()) {
+                send_json(response, 400, {
+                    {"error", "MISSING_DEVICE_ID"},
+                    {"message", "Can gui device_id de yeu cau ket noi"}
+                });
+                return;
+            }
+
+            const DiscoveryResult result = discovery_service.record_attempt(
+                device_id,
+                location_id,
+                request.remote_addr.empty() ? "unknown" : request.remote_addr,
+                request.has_header("User-Agent")
+                    ? request.get_header_value("User-Agent")
+                    : "unknown"
+            );
+            if (!result.success) {
+                send_json(response, 500, {
+                    {"error", "DEVICE_DISCOVERY_FAILED"},
+                    {"message", "Khong the luu yeu cau ket noi"}
+                });
+                return;
+            }
+
+            if (result.first_seen) {
+                audit_logger.write({
+                    {"event_type", "DEVICE_CONNECTION_REQUESTED"},
+                    {"device_id", device_id},
+                    {"location_id", location_id},
+                    {"username", subject->username},
+                    {"reason_code", "PENDING_ADMIN_APPROVAL"},
+                    {"severity", "medium"}
+                });
+            }
+
+            send_json(response, 202, {
+                {"status", "PENDING_ADMIN_APPROVAL"},
+                {"device_id", device_id},
+                {"message", "Yeu cau da duoc gui den quan tri vien"}
+            });
+        } catch (const json::exception&) {
+            send_json(response, 400, {{"error", "INVALID_JSON"}});
+        }
+    });
+
+    // Hang cho nay chi danh cho giao dien quan tri vien.
+    server.Get("/api/device-requests", [
+        &auth_service,
+        &discovery_service
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto admin =
+            authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) {
+            return;
+        }
+
+        json requests = json::array();
+        for (const auto& pending : discovery_service.list_pending()) {
+            requests.push_back({
+                {"device_id", pending.device_id},
+                {"location_id", pending.location_id},
+                {"source_ip", pending.source_ip},
+                {"user_agent", pending.user_agent},
+                {"first_seen", pending.first_seen},
+                {"last_seen", pending.last_seen},
+                {"attempt_count", pending.attempt_count}
+            });
+        }
+        send_json(response, 200, {{"requests", requests}});
+    });
+
     server.Post("/api/devices", [
         &auth_service,
         &device_management_service,
+        &discovery_service,
         &audit_logger
     ](
         const httplib::Request& request,
@@ -1076,6 +1171,22 @@ int main() {
                 {"severity", "info"}
             });
 
+            // Chi xoa hang cho khi cap phat hoan tat. Neu co loi, admin van
+            // thay yeu cau de sua phan loai va thu lai.
+            const bool request_resolved =
+                discovery_service.resolve(result.device_id);
+            if (request_resolved) {
+                audit_logger.write({
+                    {"event_type", "DEVICE_CONNECTION_APPROVED"},
+                    {"actor", admin->username},
+                    {"device_id", result.device_id},
+                    {"trust_level", result.trust_level},
+                    {"location_id", result.location_id},
+                    {"reason_code", "DEVICE_ENROLLED_BY_ADMIN"},
+                    {"severity", "info"}
+                });
+            }
+
             send_json(response, 201, {
                 {"message", result.message},
                 {"device", {
@@ -1083,6 +1194,7 @@ int main() {
                     {"trust_level", result.trust_level},
                     {"location_id", result.location_id}
                 }},
+                {"pending_request_resolved", request_resolved},
                 // Chi tra ve key tai thoi diem cap phat. Audit va policy khong luu key dang ro.
                 {"device_key", result.device_key}
             });

@@ -40,6 +40,8 @@ const eventTitles = {
   DEVICE_REVOKED: "Đã thu hồi thiết bị",
   DEVICE_DELETED: "Đã xoá vĩnh viễn thiết bị",
   DEVICE_DISCOVERED: "Phát hiện thiết bị mới chờ phê duyệt",
+  DEVICE_CONNECTION_REQUESTED: "Thiết bị gửi yêu cầu kết nối",
+  DEVICE_CONNECTION_APPROVED: "Đã duyệt yêu cầu kết nối",
   ADMIN_PASSWORD_CONFIGURED: "Đã thiết lập mật khẩu quản trị"
 };
 

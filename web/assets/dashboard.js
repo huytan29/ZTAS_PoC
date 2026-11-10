@@ -170,6 +170,41 @@ function renderDataZones(zones) {
     </table>`;
 }
 
+function renderConnectionRequests(requests) {
+  const container = document.querySelector("#connection-request-list");
+  const count = document.querySelector("#pending-request-count");
+  count.textContent = `${requests.length} yêu cầu chờ`;
+
+  if (!requests.length) {
+    container.innerHTML = '<p class="empty-state">Không có yêu cầu kết nối đang chờ phê duyệt.</p>';
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="connection-request-table">
+      <thead><tr><th>Thiết bị yêu cầu</th><th>Vùng mạng khai báo</th><th>IP nguồn</th><th>Lần đầu / gần nhất</th><th>Số lần thử</th><th>Thông tin máy khách</th><th>Thao tác</th></tr></thead>
+      <tbody>${requests.map(request => `
+        <tr>
+          <td><strong>${escapeHtml(request.device_id)}</strong><span class="request-state"><i class="status-dot status-dot--warning"></i>Chờ phân loại</span></td>
+          <td><span class="device-zone">${escapeHtml(request.location_id)}</span></td>
+          <td><span class="device-zone">${escapeHtml(request.source_ip)}</span></td>
+          <td class="request-time"><strong>${formatTime(request.first_seen)}</strong><span>Cập nhật: ${formatTime(request.last_seen)}</span></td>
+          <td>${escapeHtml(request.attempt_count)}</td>
+          <td class="request-agent" title="${escapeHtml(request.user_agent)}">${escapeHtml(request.user_agent)}</td>
+          <td><button class="button button--primary button--small" data-approve-request="${escapeHtml(request.device_id)}" data-request-location="${escapeHtml(request.location_id)}">Phân loại &amp; cấp quyền</button></td>
+        </tr>`).join("")}</tbody>
+    </table>`;
+
+  container.querySelectorAll("[data-approve-request]").forEach(button => {
+    button.addEventListener("click", () => {
+      requireAdmin(() => openEnrollDialog(
+        button.dataset.approveRequest,
+        button.dataset.requestLocation
+      ));
+    });
+  });
+}
+
 function renderDashboard(data) {
   const { summary, devices } = data;
 
@@ -222,6 +257,18 @@ async function refreshDataZones() {
   }
 }
 
+async function refreshConnectionRequests() {
+  const container = document.querySelector("#connection-request-list");
+  try {
+    const response = await fetch("/api/device-requests", { cache: "no-store" });
+    if (!response.ok) throw new Error("Không lấy được yêu cầu kết nối");
+    const data = await response.json();
+    renderConnectionRequests(data.requests ?? []);
+  } catch {
+    container.innerHTML = '<p class="empty-state">Không thể tải yêu cầu kết nối.</p>';
+  }
+}
+
 function showDialog(id) {
   document.querySelector(`#${id}`).showModal();
 }
@@ -265,12 +312,15 @@ async function loadAssignableUsers() {
   }
 }
 
-async function openEnrollDialog(deviceId = "") {
+async function openEnrollDialog(deviceId = "", locationId = "lab-network") {
   const form = document.querySelector("#enroll-device-form");
   form.reset();
   form.elements.device_id.value = deviceId;
   form.elements.trust_level.value = "3";
-  form.elements.location_id.value = "lab-network";
+  form.elements.location_id.value = [...form.elements.location_id.options]
+    .some(option => option.value === locationId)
+      ? locationId
+      : "lab-network";
   document.querySelector("#enroll-device-message").textContent = "";
   await loadAssignableUsers();
   showDialog("enroll-device-dialog");
@@ -368,6 +418,7 @@ document.querySelector("#enroll-device-form").addEventListener("submit", async e
     closeDialog("enroll-device-dialog");
     showDialog("device-key-dialog");
     refreshDashboard();
+    refreshConnectionRequests();
   } catch (error) {
     message.textContent = error.message;
   }
@@ -451,7 +502,9 @@ document.querySelector("#logout-button").addEventListener("click", async () => {
 
 refreshDashboard();
 refreshDataZones();
+refreshConnectionRequests();
 setInterval(() => {
   refreshDashboard();
   refreshDataZones();
+  refreshConnectionRequests();
 }, 1000);
