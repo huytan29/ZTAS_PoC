@@ -1,4 +1,4 @@
-const CACHE_NAME = "ztas-console-shell-v1";
+const CACHE_NAME = "ztas-console-shell-v3";
 const STATIC_ASSETS = [
   "/assets/common.css",
   "/assets/common.js",
@@ -8,7 +8,7 @@ const STATIC_ASSETS = [
   "/assets/logs.js",
   "/assets/accounts.css",
   "/assets/accounts.js",
-  "/assets/app-icon.svg",
+  "/assets/ptit-logo-white.png",
   "/manifest.webmanifest"
 ];
 

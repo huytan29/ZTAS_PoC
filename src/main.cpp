@@ -197,6 +197,19 @@ std::optional<std::string> read_text_file(
     return content.str();
 }
 
+std::optional<std::string> read_binary_file(
+    const std::string& path
+) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        return std::nullopt;
+    }
+
+    std::stringstream content;
+    content << file.rdbuf();
+    return content.str();
+}
+
 std::optional<json> read_json_file(const std::string& path) {
     std::ifstream file(path);
     if (!file) {
@@ -940,6 +953,34 @@ int main() {
             web_assets_directory + "/app-icon.svg",
             "image/svg+xml"
         );
+    });
+
+    server.Get("/assets/ptit-logo.png", [&web_assets_directory](
+        const httplib::Request&,
+        httplib::Response& response
+    ) {
+        const auto content = read_binary_file(
+            web_assets_directory + "/ptit-logo.png"
+        );
+        if (!content.has_value()) {
+            send_json(response, 404, {{"error", "STATIC_FILE_NOT_FOUND"}});
+            return;
+        }
+        response.set_content(*content, "image/png");
+    });
+
+    server.Get("/assets/ptit-logo-white.png", [&web_assets_directory](
+        const httplib::Request&,
+        httplib::Response& response
+    ) {
+        const auto content = read_binary_file(
+            web_assets_directory + "/ptit-logo-white.png"
+        );
+        if (!content.has_value()) {
+            send_json(response, 404, {{"error", "STATIC_FILE_NOT_FOUND"}});
+            return;
+        }
+        response.set_content(*content, "image/png");
     });
 
     server.Get("/assets/common.css", [&web_assets_directory](
