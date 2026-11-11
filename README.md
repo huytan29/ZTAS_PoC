@@ -54,6 +54,19 @@ và sinh `runtime/ztas.env` nếu tệp chưa tồn tại.
    mingw32-make build
    ```
 
+## Ứng dụng Windows và iPhone/iPad
+
+Giao diện có thể cài như một **PWA** (Progressive Web App), dùng cùng code và
+policy với bản web nên không có giao diện/luồng quyền riêng bị lệch.
+
+- **Windows:** mở Dashboard bằng Microsoft Edge hoặc Chrome, chọn biểu tượng
+  cài đặt ứng dụng trên thanh địa chỉ (hoặc menu `…` → *Apps* → *Install*).
+- **iPhone/iPad:** mở URL Dashboard qua HTTPS trong Safari, chọn *Chia sẻ* →
+  *Thêm vào Màn hình chính*. Safari sẽ mở ứng dụng ở chế độ độc lập.
+
+PWA vẫn cần kết nối tới ZTAS để xác thực, kiểm tra policy và đọc dữ liệu; chỉ
+các tài nguyên giao diện được cache cục bộ.
+
    Nếu bản MinGW-w64 của bạn cung cấp lệnh `make.exe`, `make build` cũng tương
    đương.
 

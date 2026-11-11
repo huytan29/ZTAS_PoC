@@ -753,6 +753,9 @@ int main() {
     const std::string web_assets_directory =
         env_or_default("WEB_ASSETS_DIRECTORY", "web/assets");
 
+    const std::string web_root_directory =
+        env_or_default("WEB_ROOT_DIRECTORY", "web");
+
     const std::string token_secret =
         env_or_default("APP_TOKEN_SECRET", "");
 
@@ -904,6 +907,39 @@ int main() {
         httplib::Response& response
     ) {
         send_text_file(response, setup_file, "text/html; charset=utf-8");
+    });
+
+    server.Get("/manifest.webmanifest", [&web_root_directory](
+        const httplib::Request&,
+        httplib::Response& response
+    ) {
+        send_text_file(
+            response,
+            web_root_directory + "/manifest.webmanifest",
+            "application/manifest+json; charset=utf-8"
+        );
+    });
+
+    server.Get("/service-worker.js", [&web_root_directory](
+        const httplib::Request&,
+        httplib::Response& response
+    ) {
+        send_text_file(
+            response,
+            web_root_directory + "/service-worker.js",
+            "application/javascript; charset=utf-8"
+        );
+    });
+
+    server.Get("/assets/app-icon.svg", [&web_assets_directory](
+        const httplib::Request&,
+        httplib::Response& response
+    ) {
+        send_text_file(
+            response,
+            web_assets_directory + "/app-icon.svg",
+            "image/svg+xml"
+        );
     });
 
     server.Get("/assets/common.css", [&web_assets_directory](
