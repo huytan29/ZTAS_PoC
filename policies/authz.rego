@@ -100,6 +100,21 @@ auth_sufficient if {
         data.resources[input.resource.id].min_auth_level
 }
 
+# Admin van phai dang nhap tu thiet bi da dang ky, dung IP duoc cap va nam
+# trong pham vi tai khoan. Sau khi cac dieu kien nen tang nay dung, admin co
+# quyen doc toan bo phan vung tai lieu cua PoC ma khong phai step-up theo cap.
+admin_full_access if {
+    input.subject.role == "admin"
+    valid_context
+    device_registered
+    not device_blocked
+    device_key_verified
+    device_ip_verified
+    account_active
+    account_device_bound
+    location_matches_device
+}
+
 output(effect, rule_id, reason, severity, required_auth) := {
     "effect": effect,
     "rule_id": rule_id,
@@ -281,6 +296,7 @@ decision := output(
     location_matches_device
     role_sufficient
     not device_sufficient
+    not admin_full_access
 }
 
 decision := output(
@@ -300,6 +316,7 @@ decision := output(
     role_sufficient
     device_sufficient
     not location_sufficient
+    not admin_full_access
 }
 
 decision := output(
@@ -320,6 +337,17 @@ decision := output(
     device_sufficient
     location_sufficient
     not auth_sufficient
+    not admin_full_access
+}
+
+decision := output(
+    "PERMIT",
+    "ZTAS-4002",
+    "ADMIN_GLOBAL_DOCUMENT_READ",
+    "info",
+    1
+) if {
+    admin_full_access
 }
 
 decision := output(
@@ -340,4 +368,5 @@ decision := output(
     device_sufficient
     location_sufficient
     auth_sufficient
+    not admin_full_access
 }

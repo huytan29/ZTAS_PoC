@@ -19,6 +19,10 @@ struct AccessSubject{
     std::vector<std::string> allowed_device_ids;
     // 0 la tai khoan/phiên khong het han; Unix epoch > 0 la thoi diem het han.
     long long account_expires_at = 0;
+    // Chi co trong token cua man hinh doc tai lieu: ngu canh thiet bi da
+    // duoc server doi chieu khi bat dau phien.
+    std::string reader_device_id;
+    std::string reader_location_id;
 };
 
 // Tài nguyên được bảo vệ trong hệ thống

@@ -116,7 +116,7 @@ body {
 /* Chi ba muc dieu huong la sidebar truot; thanh thuong hieu giu ngang. */
 :root { --navigation-panel-width: 248px; }
 .topbar { position:sticky; z-index:30; top:0; width:auto; min-height:66px; }
-.topbar__content { flex-direction:row; align-items:center; justify-content:space-between; gap:16px; width:auto; min-height:66px; max-width:1240px; margin:auto; padding:0 clamp(16px, 4vw, 28px); }
+.topbar__content { flex-direction:row; align-items:center; justify-content:space-between; gap:16px; width:100%; min-height:66px; max-width:none; margin:0; padding:0 clamp(16px, 2vw, 28px); }
 .topbar__identity { display:flex; align-items:center; min-width:0; gap:11px; }
 .topbar__controls { display:flex; align-items:center; justify-content:flex-end; gap:7px; }
 .app-install-button { cursor:pointer; padding:7px 10px; border:1px solid #71a2ff; border-radius:7px; background:#3d70cf; color:#fff; font:inherit; font-size:12px; font-weight:720; white-space:nowrap; }.app-install-button:hover { background:#4c80e0; }
@@ -131,8 +131,9 @@ body {
 .navigation__link { display:flex; align-items:center; gap:10px; min-height:44px; padding:11px 12px; border:1px solid transparent; border-radius:9px; }
 .navigation__link::before { display:inline-grid; width:18px; flex:0 0 18px; place-items:center; color:#b8c6d8; font-size:16px; content:""; }
 .navigation__link:nth-child(1)::before { content:"▣"; }
-.navigation__link:nth-child(2)::before { content:"☷"; }
-.navigation__link:nth-child(3)::before { content:"◉"; }
+.navigation__link:nth-child(2)::before { content:"▤"; }
+.navigation__link:nth-child(3)::before { content:"☷"; }
+.navigation__link:nth-child(4)::before { content:"◉"; }
 .navigation__link--active { border-color:#ffffff12; background:linear-gradient(90deg, #3c5b83, #304a6b); box-shadow:inset 3px 0 0 #78a7ff; }.navigation__link--active::before { color:#fff; }
 .page-container { width:100%; max-width:1240px; margin:auto; transition:width .22s ease, margin-left .22s ease, margin-right .22s ease; }
 :root[data-sidebar-open="true"] .navigation { transform:translateX(0); }

@@ -758,7 +758,7 @@ std::string AuthService::issue_token(
         ? std::min(now + 900, subject.account_expires_at)
         : now + 900;
 
-    const json payload = {
+    json payload = {
         {"sub", subject.username},
         {"role", subject.role},
         {"auth_level", subject.auth_level},
@@ -768,11 +768,28 @@ std::string AuthService::issue_token(
         {"exp", token_expiry}
     };
 
+    if (!subject.reader_device_id.empty() &&
+        !subject.reader_location_id.empty()) {
+        payload["reader_device_id"] = subject.reader_device_id;
+        payload["reader_location_id"] = subject.reader_location_id;
+    }
+
     const std::string encoded_payload =
         base64url_encode(payload.dump());
 
     return encoded_payload + "." +
         sign(encoded_payload, token_secret_);
+}
+
+std::string AuthService::issue_reader_token(
+    const AccessSubject& subject,
+    const std::string& device_id,
+    const std::string& location_id
+) const {
+    AccessSubject reader_subject = subject;
+    reader_subject.reader_device_id = device_id;
+    reader_subject.reader_location_id = location_id;
+    return issue_token(reader_subject);
 }
 
 std::optional<AccessSubject> AuthService::verify_token(
@@ -862,7 +879,9 @@ std::optional<AccessSubject> AuthService::verify_token(
                     "allowed_device_ids",
                     std::vector<std::string>{}
                 ),
-                account_expires_at
+                account_expires_at,
+                payload.value("reader_device_id", ""),
+                payload.value("reader_location_id", "")
             };
         }
 

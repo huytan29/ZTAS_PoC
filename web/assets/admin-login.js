@@ -2,7 +2,8 @@ const form = document.querySelector("#admin-login-form");
 const message = document.querySelector("#login-message");
 const submit = form.querySelector("button[type=submit]");
 const next = new URLSearchParams(location.search).get("next");
-const target = ["/logs", "/accounts"].includes(next) ? next : "/dashboard";
+const requestedTarget = ["/dashboard", "/logs", "/accounts", "/documents"].includes(next)
+  ? next : "";
 
 form.addEventListener("submit", async event => {
   event.preventDefault();
@@ -21,11 +22,10 @@ form.addEventListener("submit", async event => {
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) throw new Error(data.error || "Không thể đăng nhập");
-    if (data.subject?.role !== "admin") {
-      throw new Error("Tài khoản này không có quyền quản trị");
-    }
-
-    sessionStorage.setItem("ztas_admin_token", data.access_token);
+    sessionStorage.setItem("ztas_session_token", data.access_token);
+    const target = data.subject?.role === "admin"
+      ? (requestedTarget || "/dashboard")
+      : "/documents";
     location.assign(target);
   } catch (error) {
     message.textContent = error.message === "INVALID_CREDENTIALS"

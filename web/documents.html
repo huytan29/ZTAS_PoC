@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZTAS | Tài liệu được bảo vệ</title>
+  <meta name="theme-color" content="#11233d">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/assets/ptit-logo-white.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <link rel="stylesheet" href="/assets/common.css">
+  <link rel="stylesheet" href="/assets/documents.css">
+  <script defer src="/assets/common.js"></script>
+  <script defer src="/assets/documents.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar__content">
+      <div class="topbar__identity"><button class="sidebar-launcher" data-sidebar-toggle type="button" aria-label="Mở menu" aria-expanded="false"><span>☰</span></button><a class="brand" href="/dashboard"><img class="brand__logo" src="/assets/ptit-logo-white.png" alt="PTIT"><span>PoC PTIT Security Console</span></a></div>
+      <div class="topbar__controls"><button class="app-install-button" id="install-app-button" type="button" hidden>Cài ứng dụng</button><button class="theme-toggle" data-theme-toggle type="button" aria-pressed="false"></button><button class="navigation__logout" id="logout-button" type="button">Đăng xuất</button><span class="service-status" id="connection-status"><i class="status-dot"></i>Sẵn sàng</span></div>
+    </div>
+    <nav class="navigation" aria-label="Điều hướng chính"><header class="navigation__header"><div><span>KHÔNG GIAN LÀM VIỆC</span><strong>Điều hướng</strong></div></header><div class="navigation__links"><a class="navigation__link" href="/dashboard">Thiết bị</a><a class="navigation__link navigation__link--active" href="/documents">Tài liệu</a><a class="navigation__link" href="/logs">Nhật ký</a><a class="navigation__link" href="/accounts">Tài khoản</a></div></nav>
+  </header>
+
+  <main class="page-container documents-page">
+    <section class="page-heading">
+      <div>
+        <p class="page-kicker">Truy cập có kiểm soát</p>
+        <h1>Tài liệu được bảo vệ</h1>
+        <p>Dùng trực tiếp phiên đăng nhập hệ thống. ZTAS tự đối chiếu thiết bị đã được cấp phát trước khi cho đọc.</p>
+      </div>
+      <span class="reader-session" id="reader-session">Chưa đăng nhập tài khoản</span>
+    </section>
+
+    <section class="reader-layout">
+      <aside class="panel access-panel">
+        <header class="panel__header"><h2>Tài khoản đang truy cập</h2><p>Phiên đăng nhập hệ thống được dùng trực tiếp để đọc tài liệu.</p></header>
+        <div class="reader-account-note" id="reader-account-note"><strong>Đang xác thực tài khoản…</strong><span>ZTAS đang đối chiếu tài khoản và thiết bị đã được cấp phát.</span></div>
+        <div class="reader-policy-note"><strong>Zero Trust</strong><span>Thiết bị và IP được xác minh ngầm. Tài khoản chỉ thấy tài liệu được policy cấp quyền.</span></div>
+      </aside>
+
+      <section class="document-workspace">
+        <div class="document-levels" id="document-levels" aria-label="Các mức tài liệu">
+          <button class="document-card document-card--public" data-zone="public" type="button"><span>Cấp 1</span><strong>Công khai</strong><small>Guest trở lên</small></button>
+          <button class="document-card document-card--internal" data-zone="internal" type="button"><span>Cấp 2</span><strong>Nội bộ</strong><small>Employee trở lên</small></button>
+          <button class="document-card document-card--confidential" data-zone="confidential" type="button"><span>Cấp 3</span><strong>Mật / nhạy cảm</strong><small>Manager trở lên · MFA 2</small></button>
+          <button class="document-card document-card--secret" data-zone="secret" type="button"><span>Cấp 4</span><strong>Bí mật</strong><small>Engineer trở lên · MFA 3</small></button>
+          <button class="document-card document-card--restricted" data-zone="restricted" type="button"><span>Cấp 5</span><strong>Hạn chế đặc biệt</strong><small>Admin · MFA 5</small></button>
+        </div>
+
+        <section class="panel viewer-panel" aria-live="polite">
+          <header class="viewer-panel__header"><div><p class="page-kicker">Kết quả truy cập</p><h2 id="viewer-title">Chọn mức tài liệu để đọc</h2></div><span class="decision-badge" id="decision-badge">CHỜ</span></header>
+          <div class="viewer-content" id="viewer-content"><p>Hệ thống chỉ hiển thị nội dung khi policy trả về <strong>PERMIT</strong>. Hãy đăng nhập, sau đó chọn một phân vùng tài liệu.</p></div>
+        </section>
+
+        <section class="panel custom-document-panel">
+          <header class="panel__header"><h2>Tệp trong phân vùng</h2><p>Chọn một mức tài liệu ở trên để tải danh sách các tệp bạn được phép xem.</p></header>
+          <div class="stored-document-list" id="stored-document-list"><p>Chưa chọn phân vùng.</p></div>
+        </section>
+      </section>
+    </section>
+  </main>
+</body>
+</html>

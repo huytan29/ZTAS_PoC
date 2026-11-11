@@ -1,6 +1,13 @@
 #pragma once
 
+#include <optional>
 #include <string>
+#include <vector>
+
+struct ReaderDeviceContext {
+    std::string device_id;
+    std::string location_id;
+};
 
 // Xac thuc khoa dinh danh cua thiet bi truoc khi gui ngu canh truy cap den OPA.
 // File credentials chi luu PBKDF2 hash, khong luu khoa thiet bi dang ro.
@@ -20,6 +27,11 @@ public:
     // la IPv4 hoac IPv6; khong doc X-Forwarded-For do client co the gia mao.
     bool verify_source_ip(
         const std::string& device_id,
+        const std::string& source_ip
+    ) const;
+
+    std::optional<ReaderDeviceContext> resolve_reader_context(
+        const std::vector<std::string>& allowed_device_ids,
         const std::string& source_ip
     ) const;
 

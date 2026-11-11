@@ -5,6 +5,7 @@
 #include <openssl/crypto.h>
 #include <openssl/evp.h>
 
+#include <algorithm>
 #include <fstream>
 #include <optional>
 #include <sstream>
@@ -177,4 +178,57 @@ bool DeviceRegistry::verify_source_ip(
     }
 
     return false;
+}
+
+std::optional<ReaderDeviceContext> DeviceRegistry::resolve_reader_context(
+    const std::vector<std::string>& allowed_device_ids,
+    const std::string& source_ip
+) const {
+    if (source_ip.empty() || source_ip == "unknown") return std::nullopt;
+
+    try {
+        std::ifstream file(devices_policy_file_);
+        const json policy = json::parse(file);
+        const auto& devices = policy.at("devices");
+        const bool global_scope = std::find(
+            allowed_device_ids.begin(), allowed_device_ids.end(), "*"
+        ) != allowed_device_ids.end();
+
+        std::optional<ReaderDeviceContext> ip_matched;
+        std::vector<ReaderDeviceContext> assigned_devices;
+        for (auto iterator = devices.begin(); iterator != devices.end(); ++iterator) {
+            const std::string device_id = iterator.key();
+            const json& device = iterator.value();
+            const bool assigned = global_scope || std::find(
+                allowed_device_ids.begin(), allowed_device_ids.end(), device_id
+            ) != allowed_device_ids.end();
+            const bool active = device.value("registered", false) &&
+                device.value("lifecycle_status", "ACTIVE") == "ACTIVE";
+            if (!assigned || !active) {
+                continue;
+            }
+            const ReaderDeviceContext candidate{
+                device_id,
+                device.value("location_id", "unknown")
+            };
+            assigned_devices.push_back(candidate);
+            if (verify_source_ip(device_id, source_ip)) {
+                if (ip_matched.has_value()) return std::nullopt;
+                ip_matched = candidate;
+            }
+        }
+        if (ip_matched.has_value()) return ip_matched;
+
+        // Sau khi admin da duyet thiet bi va gan duy nhat mot tai khoan vao
+        // no, giao dien web chi can dung phien dang nhap cua tai khoan do.
+        // IP van duoc ghi audit; ket noi co nhieu thiet bi phu hop thi khong
+        // tu y chon, tru truong hop admin co pham vi toan cuc.
+        if (assigned_devices.size() == 1) return assigned_devices.front();
+        if (global_scope && !assigned_devices.empty()) {
+            return assigned_devices.front();
+        }
+        return std::nullopt;
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
 }

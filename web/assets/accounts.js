@@ -21,7 +21,7 @@ function rolePermission(role) {
     employee: "Quyền hệ thống: tài liệu công khai và nội bộ (tối đa cấp 2).",
     manager: "Quyền hệ thống: đến tài liệu confidential khi thiết bị, vị trí và MFA đáp ứng policy.",
     engineer: "Quyền hệ thống: đến tài liệu secret khi thiết bị, vị trí và MFA đáp ứng policy.",
-    admin: "Quyền hệ thống: đến tài liệu restricted khi thiết bị, vị trí và MFA đáp ứng policy."
+    admin: "Quyền hệ thống: đọc toàn bộ phân vùng sau khi tài khoản và thiết bị được cấp phát hợp lệ."
   };
   return permissions[role] ?? "Quyền được xác định bởi policy hệ thống.";
 }

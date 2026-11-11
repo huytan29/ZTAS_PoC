@@ -430,7 +430,8 @@ std::optional<std::string> read_bearer_token(
         name.erase(0, name.find_first_not_of(" \t"));
         value.erase(0, value.find_first_not_of(" \t"));
 
-        if (name == "ZTAS_ADMIN_TOKEN" && !value.empty()) {
+        if ((name == "ZTAS_SESSION_TOKEN" ||
+             name == "ZTAS_ADMIN_TOKEN") && !value.empty()) {
             return value;
         }
     }
@@ -469,6 +470,14 @@ bool has_admin_session(
         : std::nullopt;
 
     return subject.has_value() && subject->role == "admin";
+}
+
+bool has_authenticated_session(
+    const httplib::Request& request,
+    const AuthService& auth_service
+) {
+    const auto token = read_bearer_token(request);
+    return token.has_value() && auth_service.verify_token(*token).has_value();
 }
 
 std::optional<AccessSubject> authenticate_admin_request(
@@ -546,13 +555,24 @@ void handle_document_request(
         ? "unknown"
         : request.remote_addr;
 
+    const bool managed_reader_session =
+        !subject->reader_device_id.empty() &&
+        subject->reader_device_id == device_id &&
+        subject->reader_location_id == request.get_header_value("X-Location-ID");
+    const bool source_ip_matches_device =
+        device_registry.verify_source_ip(device_id, source_ip);
+    const bool source_ip_verified = source_ip_matches_device ||
+        managed_reader_session;
+    const bool device_key_verified = device_registry.verify(device_id, device_key) ||
+        managed_reader_session;
+
     const AccessRequest access_request{
         *subject,
         device_id,
         request.get_header_value("X-Location-ID"),
-        device_registry.verify(device_id, device_key),
+        device_key_verified,
         source_ip,
-        device_registry.verify_source_ip(device_id, source_ip),
+        source_ip_verified,
         resource,
         "read"
     };
@@ -730,6 +750,9 @@ int main() {
     const std::string accounts_file =
         env_or_default("ACCOUNTS_FILE", "web/accounts.html");
 
+    const std::string documents_file =
+        env_or_default("DOCUMENTS_FILE", "web/documents.html");
+
     const std::string setup_file =
         env_or_default("SETUP_FILE", "web/setup.html");
 
@@ -851,7 +874,7 @@ int main() {
         response.set_redirect("/dashboard");
     });
 
-    server.Get("/admin/login", [
+    const auto serve_login_page = [
         &auth_service,
         &admin_login_file
     ](
@@ -863,15 +886,25 @@ int main() {
             ? auth_service.verify_token(*token)
             : std::nullopt;
 
-        if (subject.has_value() && subject->role == "admin") {
-            response.set_redirect("/dashboard");
+        if (subject.has_value()) {
+            const std::string next = request.has_param("next")
+                ? request.get_param_value("next") : "";
+            const bool allowed_next = next == "/documents" ||
+                (subject->role == "admin" &&
+                    (next == "/dashboard" || next == "/logs" ||
+                     next == "/accounts"));
+            response.set_redirect(allowed_next ? next :
+                (subject->role == "admin" ? "/dashboard" : "/documents"));
             return;
         }
 
         send_text_file(
             response, admin_login_file, "text/html; charset=utf-8"
         );
-    });
+    };
+
+    server.Get("/login", serve_login_page);
+    server.Get("/admin/login", serve_login_page);
 
     server.Get("/dashboard", [
         &auth_service,
@@ -881,7 +914,7 @@ int main() {
         httplib::Response& response
     ) {
         if (!has_admin_session(request, auth_service)) {
-            response.set_redirect("/admin/login?next=/dashboard");
+            response.set_redirect("/login?next=/dashboard");
             return;
         }
         send_text_file(response, dashboard_file, "text/html; charset=utf-8");
@@ -895,7 +928,7 @@ int main() {
         httplib::Response& response
     ) {
         if (!has_admin_session(request, auth_service)) {
-            response.set_redirect("/admin/login?next=/logs");
+            response.set_redirect("/login?next=/logs");
             return;
         }
         send_text_file(response, logs_file, "text/html; charset=utf-8");
@@ -909,10 +942,23 @@ int main() {
         httplib::Response& response
     ) {
         if (!has_admin_session(request, auth_service)) {
-            response.set_redirect("/admin/login?next=/accounts");
+            response.set_redirect("/login?next=/accounts");
             return;
         }
         send_text_file(response, accounts_file, "text/html; charset=utf-8");
+    });
+
+    // Menu Tai lieu dung chung phien dang nhap cua he thong, khong co form
+    // dang nhap thu hai tren giao dien.
+    server.Get("/documents", [&auth_service, &documents_file](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        if (!has_authenticated_session(request, auth_service)) {
+            response.set_redirect("/login?next=/documents");
+            return;
+        }
+        send_text_file(response, documents_file, "text/html; charset=utf-8");
     });
 
     server.Get("/setup", [&setup_file](
@@ -1049,6 +1095,17 @@ int main() {
         );
     });
 
+    server.Get("/assets/documents.css", [&web_assets_directory](
+        const httplib::Request&,
+        httplib::Response& response
+    ) {
+        send_text_file(
+            response,
+            web_assets_directory + "/documents.css",
+            "text/css; charset=utf-8"
+        );
+    });
+
     server.Get("/assets/common.js", [&web_assets_directory](
         const httplib::Request&,
         httplib::Response& response
@@ -1067,6 +1124,17 @@ int main() {
         send_text_file(
             response,
             web_assets_directory + "/accounts.js",
+            "application/javascript; charset=utf-8"
+        );
+    });
+
+    server.Get("/assets/documents.js", [&web_assets_directory](
+        const httplib::Request&,
+        httplib::Response& response
+    ) {
+        send_text_file(
+            response,
+            web_assets_directory + "/documents.js",
             "application/javascript; charset=utf-8"
         );
     });
@@ -2342,15 +2410,13 @@ int main() {
             const std::string access_token =
                 auth_service.issue_token(*subject);
 
-            // Cookie HttpOnly cho man hinh quan tri. API van co the nhan
-            // Authorization: Bearer de phuc vu client/CLI cua PoC.
-            if (subject->role == "admin") {
-                response.set_header(
-                    "Set-Cookie",
-                    "ZTAS_ADMIN_TOKEN=" + access_token +
-                        "; Path=/; Max-Age=900; HttpOnly; SameSite=Strict"
-                );
-            }
+            // Mot cookie HttpOnly dung chung cho toan bo giao dien. Policy
+            // van phan biet admin va tai khoan thuong o tung endpoint.
+            response.set_header(
+                "Set-Cookie",
+                "ZTAS_SESSION_TOKEN=" + access_token +
+                    "; Path=/; Max-Age=900; HttpOnly; SameSite=Strict"
+            );
 
             send_json(response, 200, {
                 {"access_token", access_token},
@@ -2375,9 +2441,186 @@ int main() {
     ) {
         response.set_header(
             "Set-Cookie",
-            "ZTAS_ADMIN_TOKEN=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"
+            "ZTAS_SESSION_TOKEN=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"
         );
         send_json(response, 200, {{"message", "Da dang xuat"}});
+    });
+
+    // Giao dien doc tai lieu chi can username/password. Server rang buoc
+    // token ngan han voi thiet bi da duoc cap phat duy nhat khop IP ket noi.
+    server.Post("/api/reader-login", [
+        &auth_service,
+        &device_registry,
+        &audit_logger
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        try {
+            const json body = json::parse(request.body);
+            const auto subject = auth_service.authenticate(
+                body.value("username", ""),
+                body.value("password", "")
+            );
+            if (!subject.has_value()) {
+                send_json(response, 401, {{"error", "INVALID_CREDENTIALS"}});
+                return;
+            }
+
+            const std::string source_ip = request.remote_addr.empty()
+                ? "unknown" : request.remote_addr;
+            const auto context = device_registry.resolve_reader_context(
+                subject->allowed_device_ids, source_ip
+            );
+            if (!context.has_value()) {
+                audit_logger.write({
+                    {"event_type", "READER_LOGIN_DENY"},
+                    {"username", subject->username},
+                    {"source_ip", source_ip},
+                    {"reason_code", "READER_DEVICE_CONTEXT_NOT_FOUND"},
+                    {"severity", "high"}
+                });
+                send_json(response, 403, {
+                    {"error", "READER_DEVICE_CONTEXT_NOT_FOUND"},
+                    {"message", "Khong nhan dang duoc mot thiet bi da cap phat cho tai khoan nay tren ket noi hien tai"}
+                });
+                return;
+            }
+
+            audit_logger.write({
+                {"event_type", "READER_LOGIN_PERMIT"},
+                {"username", subject->username},
+                {"device_id", context->device_id},
+                {"location_id", context->location_id},
+                {"source_ip", source_ip},
+                {"severity", "info"}
+            });
+            send_json(response, 200, {
+                {"access_token", auth_service.issue_reader_token(
+                    *subject, context->device_id, context->location_id
+                )},
+                {"token_type", "Bearer"},
+                {"expires_in", 900},
+                {"subject", {{"username", subject->username}, {"role", subject->role}}},
+                {"reader_context", {
+                    {"device_id", context->device_id},
+                    {"location_id", context->location_id}
+                }}
+            });
+        } catch (const json::exception&) {
+            send_json(response, 400, {{"error", "INVALID_JSON"}});
+        }
+    });
+
+    // Dung lai cookie dang nhap quan tri (hoac Bearer token hop le) khi nguoi
+    // dung mo menu Tai lieu. Vi vay admin da dang nhap Dashboard khong phai
+    // dang nhap lan thu hai de doc tai lieu.
+    server.Get("/api/reader-context", [
+        &auth_service,
+        &device_registry,
+        &audit_logger
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto subject = authenticate_request(request, auth_service, response);
+        if (!subject.has_value()) return;
+
+        const std::string source_ip = request.remote_addr.empty()
+            ? "unknown" : request.remote_addr;
+        const auto context = device_registry.resolve_reader_context(
+            subject->allowed_device_ids, source_ip
+        );
+        if (!context.has_value()) {
+            send_json(response, 403, {
+                {"error", "READER_DEVICE_CONTEXT_NOT_FOUND"},
+                {"message", "Khong nhan dang duoc thiet bi da cap phat tren ket noi hien tai"}
+            });
+            return;
+        }
+
+        audit_logger.write({
+            {"event_type", "READER_CONTEXT_RESTORED"},
+            {"username", subject->username},
+            {"device_id", context->device_id},
+            {"location_id", context->location_id},
+            {"source_ip", source_ip},
+            {"severity", "info"}
+        });
+        send_json(response, 200, {
+            {"access_token", auth_service.issue_reader_token(
+                *subject, context->device_id, context->location_id
+            )},
+            {"token_type", "Bearer"},
+            {"expires_in", 900},
+            {"subject", {{"username", subject->username}, {"role", subject->role}}},
+            {"reader_context", {
+                {"device_id", context->device_id},
+                {"location_id", context->location_id}
+            }}
+        });
+    });
+
+    // Chi liet ke ten tep sau khi policy da cho phep ngu canh doc. Tep van
+    // duoc tai qua endpoint bao ve /documents/<zone>/<filename>.
+    server.Get(R"(/api/document-files/([^/]+))", [
+        &auth_service,
+        &device_registry,
+        &access_service,
+        &document_storage_directory
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto subject = authenticate_request(request, auth_service, response);
+        if (!subject.has_value()) return;
+        const std::string zone_id = request.matches[1];
+        const ProtectedResource* resource = resource_for_zone(zone_id);
+        if (resource == nullptr || !request.has_header("X-Device-ID") ||
+            !request.has_header("X-Location-ID")) {
+            send_json(response, 400, {{"error", "MISSING_ACCESS_CONTEXT"}});
+            return;
+        }
+
+        const std::string device_id = request.get_header_value("X-Device-ID");
+        const std::string source_ip = request.remote_addr.empty()
+            ? "unknown" : request.remote_addr;
+        const bool managed_reader_session =
+            !subject->reader_device_id.empty() &&
+            subject->reader_device_id == device_id &&
+            subject->reader_location_id == request.get_header_value("X-Location-ID");
+        const bool source_ip_matches_device =
+            device_registry.verify_source_ip(device_id, source_ip);
+        const bool source_ip_verified = source_ip_matches_device ||
+            managed_reader_session;
+        const std::string device_key = request.has_header("X-Device-Key")
+            ? request.get_header_value("X-Device-Key") : "";
+        const AccessDecision decision = access_service.authorize({
+            *subject, device_id, request.get_header_value("X-Location-ID"),
+            device_registry.verify(device_id, device_key) || managed_reader_session,
+            source_ip, source_ip_verified, *resource, "list"
+        });
+        if (!decision.policy_available) {
+            send_json(response, 502, {{"error", decision.reason_code}});
+            return;
+        }
+        if (!decision.is_permitted()) {
+            send_json(response, 403, decision_json(decision));
+            return;
+        }
+
+        json files = json::array();
+        std::error_code error;
+        const fs::path directory = fs::path(document_storage_directory) / zone_id;
+        for (const auto& entry : fs::directory_iterator(directory, error)) {
+            if (error) break;
+            const std::string filename = entry.path().filename().string();
+            if (entry.is_regular_file(error) && !error && safe_document_name(filename)) {
+                files.push_back({{"name", filename}, {"size", entry.file_size(error)}});
+            }
+            error.clear();
+        }
+        send_json(response, 200, {{"files", files}, {"decision", decision_json(decision)}});
     });
 
     server.Post("/api/step-up", [

@@ -51,6 +51,12 @@ public:
         const AccessSubject& subject
     ) const;
 
+    std::string issue_reader_token(
+        const AccessSubject& subject,
+        const std::string& device_id,
+        const std::string& location_id
+    ) const;
+
     std::optional<AccessSubject> verify_token(
         const std::string& token
     ) const;
