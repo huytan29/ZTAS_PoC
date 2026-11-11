@@ -35,11 +35,19 @@ public:
         const std::string& assigned_username,
         const std::string& device_name = "",
         const std::string& device_type = "unknown",
-        const std::string& enrollment_profile = "manual"
+        const std::string& enrollment_profile = "manual",
+        const std::string& allowed_ip_address = "",
+        const std::string& declared_mac_address = ""
     ) const;
 
     DeviceOperationResult revoke(
         const std::string& device_id
+    ) const;
+
+    // Thay doi IP nguon duoc phep cho thiet bi da cap phat, khong sinh lai key.
+    DeviceOperationResult update_allowed_ip(
+        const std::string& device_id,
+        const std::string& allowed_ip_address
     ) const;
 
     // Chan co chu dich: vo hieu hoa khoa va ghi lifecycle BLOCKED trong policy.

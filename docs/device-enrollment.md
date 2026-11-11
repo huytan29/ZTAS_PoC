@@ -48,6 +48,20 @@ ZTAS kiem tra khoa truoc, sau do chi gui `key_verified: true/false` cho OPA.
 OPA ap dung rule `ZTAS-1004 / DEVICE_KEY_INVALID` neu khoa sai hoac bi thieu.
 Khoa bi mat khong bao gio duoc dua vao Rego hay audit log.
 
+## Rang buoc IP va MAC tuy chon
+
+Khi may gui `POST /api/connection-requests`, ZTAS luu **IP nguon cua ket noi
+TCP** (`remote_addr`). Gia tri nay khong lay tu `X-Forwarded-For`, vi header co
+the bi client gia mao. Dashboard tu dien IP nay khi admin duyet thiet bi; admin
+co the sua thanh mot IPv4 hoac IPv6 hop le neu can. Tu thoi diem cap phat, moi
+yeu cau tai lieu chi duoc phep khi Device Key va IP nguon deu khop policy.
+
+MAC mac dinh khong duoc thu thap. Chi admin moi co the bat **Thu thap MAC dac
+biet** tren Dashboard. Khi bat, client co the gui `X-Device-MAC` co dang
+`00:11:22:33:44:55` trong yeu cau ket noi; ZTAS luu gia tri nay nhu thong tin
+khai bao de dieu tra. MAC khong the duoc server tu phat hien qua Internet/VPN,
+khong thay the Device Key, va khong duoc dung lam bang chung danh tinh.
+
 ## Quy trinh khuyen dung: ma dang ky mot lan va phe duyet
 
 Day la luong dung cho Ubuntu VM, Windows VM va Docker client. Chi ZTAS trung
@@ -71,8 +85,12 @@ tam chay tren MacBook ghi policy, cap Device Key va ghi audit log.
    export ZTAS_URL=http://192.168.2.10:8020
    curl -i -X POST "$ZTAS_URL/api/connection-requests" \
      -H 'Content-Type: application/json' \
+     -H 'X-Device-MAC: 00:11:22:33:44:55' \
      -d '{"device_id":"ubuntu-vm-01","device_name":"Ubuntu VMware","device_type":"ubuntu","enrollment_code":"enr_DAN_MA_O_DAY"}'
    ```
+
+   Header `X-Device-MAC` la tuy chon va chi duoc luu khi admin da bat thu thap
+   MAC dac biet. Khong gui header nay trong van hanh thong thuong.
 
 5. Yeu cau chi hien trong hang cho `PENDING_APPROVAL`. Chua co Device Key nen
    khong the truy cap CSDL.

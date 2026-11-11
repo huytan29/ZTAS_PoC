@@ -32,6 +32,13 @@ let issuedCredential = null;
 let issuedEnrollmentCode = "";
 let assignableUsers = [];
 
+const weatherArt = {
+  clear: '<svg viewBox="0 0 48 48" role="img"><circle cx="24" cy="24" r="10" fill="#f6b73c"/><g stroke="#f6b73c" stroke-width="3" stroke-linecap="round"><path d="M24 4v5M24 39v5M4 24h5M39 24h5M10 10l4 4M34 34l4 4M38 10l-4 4M14 34l-4 4"/></g></svg>',
+  cloudy: '<svg viewBox="0 0 48 48" role="img"><circle cx="18" cy="16" r="7" fill="#f6c453"/><path d="M14 37h23a8 8 0 0 0 0-16 11 11 0 0 0-21-2 9 9 0 0 0-2 18Z" fill="#9eafc4"/></svg>',
+  rain: '<svg viewBox="0 0 48 48" role="img"><path d="M10 29h27a8 8 0 0 0 0-16 11 11 0 0 0-21-2 9 9 0 0 0-6 18Z" fill="#879db7"/><g stroke="#4b8fe2" stroke-width="3" stroke-linecap="round"><path d="m16 34-2 6m10-6-2 6m10-6-2 6"/></g></svg>',
+  calm: '<svg viewBox="0 0 48 48" role="img"><path d="M10 30h27a8 8 0 0 0 0-16 11 11 0 0 0-21-2 9 9 0 0 0-6 18Z" fill="#a9b6c6"/><path d="M12 38h17m-10 4h17" stroke="#8696a9" stroke-width="2.5" stroke-linecap="round"/></svg>'
+};
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, character => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;"
@@ -65,7 +72,96 @@ function lastActivity(device) {
 }
 
 function updateText(id, value) {
-  document.querySelector(id).textContent = value;
+  const element = document.querySelector(id);
+  if (element) element.textContent = value;
+}
+
+function weatherDescriptor(code) {
+  if (code === 0) return { label: "Trời nắng", art: "clear" };
+  if ([1, 2, 3].includes(code)) return { label: "Trời râm", art: "cloudy" };
+  if ([45, 48].includes(code)) return { label: "Sương mù", art: "calm" };
+  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82) || code >= 95) {
+    return { label: code >= 95 ? "Mưa dông" : "Trời mưa", art: "rain" };
+  }
+  return { label: "Thời tiết bình thường", art: "calm" };
+}
+
+function updateLocalDateTime() {
+  const now = new Date();
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Múi giờ cục bộ";
+  updateText("#local-date-time", now.toLocaleString("vi-VN", {
+    weekday: "short", day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit"
+  }));
+  updateText("#local-time-zone", `Vùng giờ: ${zone}`);
+  if (!document.querySelector("#weather-illustration").innerHTML) {
+    document.querySelector("#weather-illustration").innerHTML = weatherArt.calm;
+  }
+}
+
+async function loadWeatherForCurrentPosition() {
+  const button = document.querySelector("#weather-location-button");
+  const location = document.querySelector("#weather-location");
+  const condition = document.querySelector("#weather-condition");
+  if (!navigator.geolocation) {
+    location.textContent = "Trình duyệt không hỗ trợ lấy vị trí";
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = "Đang xác định…";
+  navigator.geolocation.getCurrentPosition(async position => {
+    const { latitude, longitude } = position.coords;
+    try {
+      const url = new URL("https://api.open-meteo.com/v1/forecast");
+      url.search = new URLSearchParams({
+        latitude: String(latitude), longitude: String(longitude),
+        current: "temperature_2m,apparent_temperature,weather_code",
+        timezone: "auto"
+      }).toString();
+      const addressUrl = new URL("https://nominatim.openstreetmap.org/reverse");
+      addressUrl.search = new URLSearchParams({
+        lat: String(latitude), lon: String(longitude), format: "jsonv2",
+        zoom: "10", addressdetails: "1", "accept-language": "vi"
+      }).toString();
+      const [response, addressResponse] = await Promise.all([
+        fetch(url),
+        fetch(addressUrl).catch(() => null)
+      ]);
+      if (!response.ok) throw new Error("WEATHER_SERVICE_UNAVAILABLE");
+      const data = await response.json();
+      const weather = data.current;
+      if (!weather) throw new Error("WEATHER_DATA_MISSING");
+      const descriptor = weatherDescriptor(weather.weather_code);
+      document.querySelector("#weather-illustration").innerHTML = weatherArt[descriptor.art];
+      condition.textContent = `${descriptor.label} · ${Math.round(weather.temperature_2m)}°C`;
+      let geographicAddress = "Khu vực hiện tại";
+      if (addressResponse?.ok) {
+        const addressData = await addressResponse.json();
+        const address = addressData.address ?? {};
+        const parts = [
+          address.city ?? address.town ?? address.village ?? address.municipality,
+          address.state_district ?? address.state,
+          address.country
+        ].filter((part, index, values) => part && values.indexOf(part) === index);
+        geographicAddress = parts.join(", ") || addressData.display_name || geographicAddress;
+      }
+      location.textContent = geographicAddress;
+      location.title = `${latitude.toFixed(4)}°, ${longitude.toFixed(4)}°`;
+      if (data.timezone) updateText("#local-time-zone", `Vùng giờ: ${data.timezone}`);
+      button.textContent = "Cập nhật";
+    } catch {
+      condition.textContent = "Không lấy được thời tiết";
+      location.textContent = "Không thể kết nối dịch vụ thời tiết";
+      button.textContent = "Thử lại";
+    } finally {
+      button.disabled = false;
+    }
+  }, () => {
+    location.textContent = "Bạn chưa cho phép dùng vị trí";
+    button.disabled = false;
+    button.textContent = "Dùng vị trí";
+  }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 15 * 60 * 1000 });
 }
 
 function assignedAccounts(device) {
@@ -105,7 +201,7 @@ function renderDeviceCards(devices) {
           <td class="device-table__activity"><strong>${lastActivity(device)}</strong><span>${formatTime(device.last_seen)}</span></td>
           <td class="device-table__actions">
             ${device.registered
-              ? `<button class="button button--secondary button--small" data-revoke-device="${escapeHtml(device.id)}">Thu hồi</button><button class="button button--danger-outline button--small" data-block-device="${escapeHtml(device.id)}">Chặn</button>`
+              ? `<button class="button button--secondary button--small" data-update-device-ip="${escapeHtml(device.id)}">Cập nhật IP</button><button class="button button--secondary button--small" data-revoke-device="${escapeHtml(device.id)}">Thu hồi</button><button class="button button--danger-outline button--small" data-block-device="${escapeHtml(device.id)}">Chặn</button>`
               : `<button class="button button--secondary button--small" data-reenroll-device="${escapeHtml(device.id)}">Đăng ký lại</button>`}
             <button class="button button--danger-outline button--small" data-delete-device="${escapeHtml(device.id)}">Xoá</button>
           </td>
@@ -123,6 +219,12 @@ function renderDeviceCards(devices) {
   container.querySelectorAll("[data-revoke-device]").forEach(button => {
     button.addEventListener("click", () => {
       requireAdmin(() => openRevokeDialog(button.dataset.revokeDevice));
+    });
+  });
+
+  container.querySelectorAll("[data-update-device-ip]").forEach(button => {
+    button.addEventListener("click", () => {
+      requireAdmin(() => updateDeviceIp(button.dataset.updateDeviceIp));
     });
   });
 
@@ -173,12 +275,13 @@ function renderDataZones(zones) {
 
   container.innerHTML = `
     <table class="data-zone-table">
-      <thead><tr><th>Vùng dữ liệu</th><th>Độ nhạy cảm</th><th>Số tài liệu</th><th>Mô tả</th></tr></thead>
+      <thead><tr><th>Vùng dữ liệu</th><th>Độ nhạy cảm</th><th>Tệp đã đặt</th><th>Thư mục lưu</th><th>Mô tả</th></tr></thead>
       <tbody>${zones.map(zone => `
         <tr>
           <td><strong>${escapeHtml(zone.name)}</strong><span class="zone-id">${escapeHtml(zone.id)}</span></td>
           <td><span class="sensitivity sensitivity--${escapeHtml(zone.sensitivity)}">${escapeHtml(zone.sensitivity)}</span></td>
           <td>${escapeHtml(zone.document_count)}</td>
+          <td class="data-zone-table__path">${escapeHtml(zone.storage_path)}</td>
           <td class="data-zone-table__description">${escapeHtml(zone.description)}</td>
         </tr>`).join("")}</tbody>
     </table>`;
@@ -205,7 +308,7 @@ function renderConnectionRequests(requests) {
           <td><span class="device-zone">${escapeHtml(request.source_ip)}</span></td>
           <td class="request-time"><strong>${formatTime(request.first_seen)}</strong><span>Cập nhật: ${formatTime(request.last_seen)}</span></td>
           <td class="request-agent" title="${escapeHtml(request.user_agent)}">${escapeHtml(request.user_agent)}</td>
-          <td><button class="button button--primary button--small" data-approve-request="${escapeHtml(request.device_id)}" data-request-location="${escapeHtml(request.location_id)}" data-request-profile="${escapeHtml(request.enrollment_profile || "manual")}" data-request-user="${escapeHtml(request.requested_username || "")}" data-request-name="${escapeHtml(request.device_name || request.device_id)}" data-request-type="${escapeHtml(request.device_type || "unknown")}">Phân loại &amp; cấp quyền</button></td>
+          <td><button class="button button--primary button--small" data-approve-request="${escapeHtml(request.device_id)}" data-request-location="${escapeHtml(request.location_id)}" data-request-profile="${escapeHtml(request.enrollment_profile || "manual")}" data-request-user="${escapeHtml(request.requested_username || "")}" data-request-name="${escapeHtml(request.device_name || request.device_id)}" data-request-type="${escapeHtml(request.device_type || "unknown")}" data-request-ip="${escapeHtml(request.source_ip || "")}">Phân loại &amp; cấp quyền</button></td>
         </tr>`).join("")}</tbody>
     </table>`;
 
@@ -217,7 +320,8 @@ function renderConnectionRequests(requests) {
         button.dataset.requestProfile,
         button.dataset.requestUser,
         button.dataset.requestName,
-        button.dataset.requestType
+        button.dataset.requestType,
+        button.dataset.requestIp
       ));
     });
   });
@@ -257,7 +361,6 @@ async function refreshDashboard() {
     const data = await response.json();
     renderDashboard(data);
     setConnection(true);
-    updateText("#last-updated", `Cập nhật ${new Date().toLocaleTimeString("vi-VN")}`);
   } catch {
     setConnection(false);
   }
@@ -265,13 +368,21 @@ async function refreshDashboard() {
 
 async function refreshDataZones() {
   try {
-    const response = await fetch("/api/data-zones", { cache: "no-store" });
+    if (!adminToken) {
+      document.querySelector("#data-zone-list").innerHTML =
+        '<p class="empty-state">Đăng nhập quyền admin để xem đường dẫn các khu dữ liệu.</p>';
+      return;
+    }
+    const response = await fetch("/api/data-zones", {
+      cache: "no-store", headers: apiHeaders()
+    });
     if (!response.ok) throw new Error("Không lấy được vùng dữ liệu");
     const data = await response.json();
     renderDataZones(data.zones ?? []);
   } catch {
-    document.querySelector("#data-zone-list").innerHTML =
-      '<p class="empty-state">Không thể tải vùng dữ liệu CSDL.</p>';
+    document.querySelector("#data-zone-list").innerHTML = adminToken
+      ? '<p class="empty-state">Không thể tải khu dữ liệu.</p>'
+      : '<p class="empty-state">Đăng nhập quyền admin để xem đường dẫn các khu dữ liệu.</p>';
   }
 }
 
@@ -284,6 +395,50 @@ async function refreshConnectionRequests() {
     renderConnectionRequests(data.requests ?? []);
   } catch {
     container.innerHTML = '<p class="empty-state">Không thể tải yêu cầu kết nối.</p>';
+  }
+}
+
+async function refreshMacCaptureSettings() {
+  const toggle = document.querySelector("#mac-capture-toggle");
+  const state = document.querySelector("#mac-capture-state");
+  if (!adminToken) {
+    toggle.checked = false;
+    state.textContent = "Chỉ admin";
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/device-security-settings", {
+      headers: apiHeaders(), cache: "no-store"
+    });
+    const settings = await parseResponse(response);
+    toggle.checked = Boolean(settings.mac_capture_enabled);
+    state.textContent = toggle.checked ? "Đang bật" : "Đang tắt";
+  } catch {
+    toggle.checked = false;
+    state.textContent = "Không tải được";
+  }
+}
+
+async function setMacCaptureEnabled(enabled) {
+  const toggle = document.querySelector("#mac-capture-toggle");
+  const state = document.querySelector("#mac-capture-state");
+  toggle.disabled = true;
+  state.textContent = "Đang lưu…";
+  try {
+    const response = await fetch("/api/device-security-settings", {
+      method: "PUT",
+      headers: apiHeaders(),
+      body: JSON.stringify({ mac_capture_enabled: enabled })
+    });
+    const settings = await parseResponse(response);
+    toggle.checked = Boolean(settings.mac_capture_enabled);
+    state.textContent = toggle.checked ? "Đang bật" : "Đang tắt";
+  } catch (error) {
+    toggle.checked = !enabled;
+    state.textContent = error.message;
+  } finally {
+    toggle.disabled = false;
   }
 }
 
@@ -342,13 +497,15 @@ async function openEnrollDialog(
   profileId = "managed-vm",
   assignedUsername = "",
   deviceName = "",
-  deviceType = "unknown"
+  deviceType = "unknown",
+  allowedIpAddress = ""
 ) {
   const form = document.querySelector("#enroll-device-form");
   form.reset();
   form.elements.device_id.value = deviceId;
   form.elements.device_name.value = deviceName;
   form.elements.device_type.value = deviceType;
+  form.elements.allowed_ip_address.value = allowedIpAddress;
   form.elements.enrollment_profile.value = enrollmentProfiles[profileId] ? profileId : "manual";
   if (enrollmentProfiles[profileId]) {
     applyEnrollmentProfile(form, profileId);
@@ -374,6 +531,13 @@ async function openEnrollmentCodeDialog() {
   document.querySelector("#issue-enrollment-code-message").textContent = "";
   await loadAssignableUsers(form.elements.assigned_username);
   showDialog("issue-enrollment-code-dialog");
+}
+
+function openUploadDocumentDialog() {
+  const form = document.querySelector("#upload-document-form");
+  form.reset();
+  document.querySelector("#upload-document-message").textContent = "";
+  showDialog("upload-document-dialog");
 }
 
 function openRevokeDialog(deviceId) {
@@ -407,6 +571,26 @@ async function blockDevice(deviceId) {
   }
 }
 
+async function updateDeviceIp(deviceId) {
+  const allowedIpAddress = prompt(`Nhập IPv4 hoặc IPv6 được phép cho ${deviceId}:`);
+  if (allowedIpAddress === null || !allowedIpAddress.trim()) return;
+  try {
+    const response = await fetch("/api/devices/network-identity", {
+      method: "PUT",
+      headers: apiHeaders(),
+      body: JSON.stringify({
+        device_id: deviceId,
+        allowed_ip_address: allowedIpAddress.trim()
+      })
+    });
+    const data = await parseResponse(response);
+    alert(data.message);
+    refreshDashboard();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
 async function parseResponse(response) {
   const body = await response.json().catch(() => ({}));
 
@@ -427,6 +611,14 @@ document.querySelector("#add-device-button").addEventListener("click", () => {
 
 document.querySelector("#issue-enrollment-code-button").addEventListener("click", () => {
   requireAdmin(() => openEnrollmentCodeDialog());
+});
+
+document.querySelector("#upload-document-button").addEventListener("click", () => {
+  requireAdmin(() => openUploadDocumentDialog());
+});
+
+document.querySelector("#weather-location-button").addEventListener("click", () => {
+  loadWeatherForCurrentPosition();
 });
 
 document.querySelector("#enroll-device-form select[name=enrollment_profile]").addEventListener("change", event => {
@@ -457,6 +649,8 @@ document.querySelector("#admin-login-form").addEventListener("submit", async eve
     adminToken = data.access_token;
     sessionStorage.setItem("ztas_admin_token", adminToken);
     closeDialog("admin-login-dialog");
+    refreshMacCaptureSettings();
+    refreshDataZones();
     const action = pendingAdminAction;
     pendingAdminAction = null;
     action?.();
@@ -482,6 +676,7 @@ document.querySelector("#enroll-device-form").addEventListener("submit", async e
         enrollment_profile: form.elements.enrollment_profile.value,
         trust_level: Number(form.elements.trust_level.value),
         location_id: form.elements.location_id.value,
+        allowed_ip_address: form.elements.allowed_ip_address.value.trim(),
         assigned_username: form.elements.assigned_username.value
       })
     });
@@ -498,6 +693,42 @@ document.querySelector("#enroll-device-form").addEventListener("submit", async e
   } catch (error) {
     message.textContent = error.message;
   }
+});
+
+document.querySelector("#upload-document-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const message = document.querySelector("#upload-document-message");
+  const file = form.elements.document.files[0];
+  if (!file) return;
+  if (file.size > 25 * 1024 * 1024) {
+    message.textContent = "Tệp vượt giới hạn 25 MB.";
+    return;
+  }
+
+  message.textContent = "Đang tải tệp lên…";
+  try {
+    const response = await fetch("/api/data-zones/upload", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: new FormData(form)
+    });
+    await parseResponse(response);
+    closeDialog("upload-document-dialog");
+    refreshDataZones();
+  } catch (error) {
+    message.textContent = error.message;
+  }
+});
+
+document.querySelector("#mac-capture-toggle").addEventListener("change", event => {
+  const desired = event.currentTarget.checked;
+  if (!adminToken) {
+    event.currentTarget.checked = !desired;
+    requireAdmin(() => setMacCaptureEnabled(desired));
+    return;
+  }
+  setMacCaptureEnabled(desired);
 });
 
 document.querySelector("#issue-enrollment-code-form").addEventListener("submit", async event => {
@@ -618,8 +849,12 @@ document.querySelector("#logout-button").addEventListener("click", async () => {
 refreshDashboard();
 refreshDataZones();
 refreshConnectionRequests();
+refreshMacCaptureSettings();
+updateLocalDateTime();
+setInterval(updateLocalDateTime, 1000);
 setInterval(() => {
   refreshDashboard();
   refreshDataZones();
   refreshConnectionRequests();
+  refreshMacCaptureSettings();
 }, 1000);

@@ -194,7 +194,9 @@ DeviceOperationResult DeviceManagementService::enroll(
     const std::string& assigned_username,
     const std::string& device_name,
     const std::string& device_type,
-    const std::string& enrollment_profile
+    const std::string& enrollment_profile,
+    const std::string& allowed_ip_address,
+    const std::string& declared_mac_address
 ) const {
     std::lock_guard<std::mutex> lock(mutex_);
 
@@ -285,6 +287,17 @@ DeviceOperationResult DeviceManagementService::enroll(
             {"device_type", device_type.empty() ? "unknown" : device_type},
             {"enrollment_profile", enrollment_profile.empty() ? "manual" : enrollment_profile}
         };
+        if (!allowed_ip_address.empty() && allowed_ip_address != "unknown") {
+            devices_policy["devices"][device_id]["allowed_ip_addresses"] =
+                json::array({allowed_ip_address});
+        } else {
+            devices_policy["devices"][device_id]["allowed_ip_addresses"] =
+                json::array();
+        }
+        if (!declared_mac_address.empty()) {
+            devices_policy["devices"][device_id]["declared_mac_addresses"] =
+                json::array({declared_mac_address});
+        }
 
         if (!assigned_user->contains("allowed_device_ids") ||
             !(*assigned_user)["allowed_device_ids"].is_array()) {
@@ -383,6 +396,50 @@ DeviceOperationResult DeviceManagementService::revoke(
         };
     } catch (const std::exception& error) {
         return failure("DEVICE_REVOCATION_ERROR", error.what());
+    }
+}
+
+DeviceOperationResult DeviceManagementService::update_allowed_ip(
+    const std::string& device_id,
+    const std::string& allowed_ip_address
+) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    if (!valid_device_id(device_id)) {
+        return failure("INVALID_DEVICE_ID", "Device ID khong hop le");
+    }
+    if (allowed_ip_address.empty()) {
+        return failure("INVALID_ALLOWED_IP", "Dia chi IP khong duoc de trong");
+    }
+
+    try {
+        json devices_policy = read_json(devices_policy_file_);
+        if (!devices_policy.contains("devices") ||
+            !devices_policy.at("devices").contains(device_id)) {
+            return failure("DEVICE_NOT_FOUND", "Khong tim thay thiet bi trong policy");
+        }
+
+        json& device = devices_policy["devices"][device_id];
+        if (!device.value("registered", false)) {
+            return failure("DEVICE_NOT_ACTIVE", "Thiet bi chua duoc cap phat hoac da bi thu hoi");
+        }
+        device["allowed_ip_addresses"] = json::array({allowed_ip_address});
+        write_json(devices_policy_file_, devices_policy);
+
+        return {
+            true,
+            "DEVICE_IP_UPDATED",
+            "Da cap nhat IP duoc phep cho thiet bi",
+            device_id,
+            "",
+            device.value("trust_level", 0),
+            device.value("location_id", ""),
+            device.value("device_name", device_id),
+            device.value("device_type", "unknown"),
+            device.value("enrollment_profile", "manual")
+        };
+    } catch (const std::exception& error) {
+        return failure("DEVICE_IP_UPDATE_ERROR", error.what());
     }
 }
 

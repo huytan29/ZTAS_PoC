@@ -12,21 +12,10 @@
 <body>
   <header class="topbar">
     <div class="topbar__content">
-      <a class="brand" href="/dashboard">
-        <span class="brand__mark">◆</span>
-        <span>PoC PTIT Security Console</span>
-      </a>
-      <nav class="navigation" aria-label="Điều hướng chính">
-        <a class="navigation__link navigation__link--active" href="/dashboard">Thiết bị</a>
-        <a class="navigation__link" href="/logs">Nhật ký</a>
-        <a class="navigation__link" href="/accounts">Tài khoản</a>
-        <button class="theme-toggle" data-theme-toggle type="button" aria-pressed="false"></button>
-        <button class="navigation__logout" id="logout-button" type="button">Đăng xuất</button>
-        <span class="service-status" id="connection-status">
-          <i class="status-dot"></i>Đang kết nối
-        </span>
-      </nav>
+      <div class="topbar__identity"><button class="sidebar-launcher" data-sidebar-toggle type="button" aria-label="Mở menu" aria-expanded="false"><span>☰</span></button><a class="brand" href="/dashboard"><span class="brand__mark">◆</span><span>PoC PTIT Security Console</span></a></div>
+      <div class="topbar__controls"><button class="theme-toggle" data-theme-toggle type="button" aria-pressed="false"></button><button class="navigation__logout" id="logout-button" type="button">Đăng xuất</button><span class="service-status" id="connection-status"><i class="status-dot"></i>Đang kết nối</span></div>
     </div>
+    <nav class="navigation" aria-label="Điều hướng chính"><header class="navigation__header"><div><span>KHÔNG GIAN LÀM VIỆC</span><strong>Điều hướng</strong></div></header><div class="navigation__links"><a class="navigation__link navigation__link--active" href="/dashboard">Thiết bị</a><a class="navigation__link" href="/logs">Nhật ký</a><a class="navigation__link" href="/accounts">Tài khoản</a></div></nav>
   </header>
 
   <main class="page-container">
@@ -35,7 +24,18 @@
         <h1>Trạng thái thiết bị</h1>
         <p>Danh sách thiết bị trong PoC và trạng thái Zero Trust mới nhất của từng thiết bị.</p>
       </div>
-      <time class="last-updated" id="last-updated">Chưa có dữ liệu</time>
+      <div class="heading-side">
+        <aside class="weather-card" aria-label="Thời gian và thời tiết">
+          <div class="weather-card__visual" id="weather-illustration" aria-hidden="true"></div>
+          <div class="weather-card__content">
+            <time class="weather-card__time" id="local-date-time">Đang cập nhật giờ…</time>
+            <span class="weather-card__zone" id="local-time-zone">Vùng giờ đang tải…</span>
+            <strong class="weather-card__condition" id="weather-condition">Thời tiết chưa được lấy</strong>
+            <span class="weather-card__location" id="weather-location">Chọn vị trí để xem thời tiết hiện tại</span>
+          </div>
+          <button class="weather-card__button" id="weather-location-button" type="button">Dùng vị trí</button>
+        </aside>
+      </div>
     </section>
 
     <section class="metric-grid" aria-label="Tổng quan thiết bị">
@@ -76,6 +76,14 @@
             <span>Thiết bị có hoạt động</span>
             <strong id="active-device-count">0 thiết bị</strong>
           </div>
+          <div class="service-list__row service-list__row--security">
+            <span><strong>Thu thập MAC đặc biệt</strong><small>Chỉ nhận MAC do thiết bị tự khai báo; mặc định tắt.</small></span>
+            <label class="switch-control" title="Chỉ quản trị viên được thay đổi">
+              <input id="mac-capture-toggle" type="checkbox">
+              <span class="switch-control__track" aria-hidden="true"></span>
+              <span id="mac-capture-state">Chỉ admin</span>
+            </label>
+          </div>
         </div>
       </article>
 
@@ -103,10 +111,10 @@
     <section class="data-zone-section">
       <header class="section-heading">
         <div>
-          <h2>Vùng dữ liệu trong CSDL</h2>
-          <p>CSDL SQLite chỉ được đọc sau khi ZTAS và OPA cho phép truy cập.</p>
+          <h2>Khu dữ liệu được bảo vệ</h2>
+          <p>Đặt tệp của bạn vào đúng thư mục phân vùng. ZTAS và OPA luôn kiểm tra trước khi tải tệp.</p>
         </div>
-        <span class="database-badge">SQLite · nội bộ</span>
+        <div class="section-heading__actions"><span class="database-badge">Tệp · phân vùng Zero Trust</span><button class="button button--primary" id="upload-document-button" type="button">Tải tài liệu lên</button></div>
       </header>
       <div class="data-zone-table-wrap" id="data-zone-list">
         <p class="empty-state">Đang tải cấu trúc vùng dữ liệu…</p>
@@ -162,6 +170,7 @@
       <label class="form-field">Profile cấp phát<select name="enrollment_profile"><option value="manual">Manual — admin tự phân loại</option><option value="guest">Guest — Trust 1 · external-network</option><option value="unmanaged">Unmanaged — Trust 2 · external-network</option><option value="managed-vm" selected>Managed VM — Trust 3 · lab-network</option><option value="trusted">Trusted — Trust 4 · campus-network</option><option value="secure">Secure — Trust 5 · secure-zone</option></select></label>
       <label class="form-field">Độ tin cậy<select name="trust_level" required><option value="1">Level 1 — Guest</option><option value="2">Level 2 — Basic</option><option value="3" selected>Level 3 — Managed</option><option value="4">Level 4 — Trusted</option><option value="5">Level 5 — Secure</option></select></label>
       <label class="form-field">Vùng mạng<select name="location_id" required><option value="external-network">external-network</option><option value="vpn-network">vpn-network</option><option value="lab-network" selected>lab-network</option><option value="campus-network">campus-network</option><option value="secure-zone">secure-zone</option></select></label>
+      <label class="form-field">IPv4 / IPv6 được phép<input name="allowed_ip_address" placeholder="Tự điền khi duyệt yêu cầu thiết bị" required><small>ZTAS chỉ cho phép truy cập từ đúng địa chỉ IP quan sát được. IPv4 và IPv6 đều được hỗ trợ.</small></label>
       <label class="form-field">Tài khoản được gán<select name="assigned_username" required><option value="">Đang tải tài khoản…</option></select><small>Thiết bị chỉ xuất hiện Dashboard sau khi gán tài khoản.</small></label>
       <p class="form-message" id="enroll-device-message"></p>
       <footer class="modal__footer"><button class="button button--secondary" type="button" data-close-dialog="enroll-device-dialog">Hủy</button><button class="button button--primary" type="submit">Cấp phát thiết bị</button></footer>
@@ -186,6 +195,16 @@
       <div class="credential-actions"><button class="button button--secondary" id="copy-enrollment-code" type="button">Sao chép mã</button></div>
       <footer class="modal__footer"><button class="button button--primary" type="button" data-close-dialog="enrollment-code-result-dialog">Đã lưu mã</button></footer>
     </section>
+  </dialog>
+
+  <dialog class="modal" id="upload-document-dialog">
+    <form class="modal__card" id="upload-document-form" enctype="multipart/form-data">
+      <header class="modal__header"><div><h2>Tải tài liệu vào phân vùng</h2><p>Chỉ admin có thể nạp tệp. Quyền đọc tệp được xác định bởi phân vùng Zero Trust đã chọn.</p></div><button class="icon-button" type="button" data-close-dialog="upload-document-dialog">×</button></header>
+      <label class="form-field">Phân vùng dữ liệu<select name="zone_id" required><option value="public">public — công khai</option><option value="internal">internal — nội bộ</option><option value="confidential">confidential — mật</option><option value="secret">secret — bí mật</option><option value="restricted">restricted — hạn chế đặc biệt</option></select></label>
+      <label class="form-field">Tệp tài liệu<input name="document" type="file" required><small>Tối đa 25 MB. Chọn cùng tên sẽ thay thế tệp cũ trong chính phân vùng đó.</small></label>
+      <p class="form-message" id="upload-document-message"></p>
+      <footer class="modal__footer"><button class="button button--secondary" type="button" data-close-dialog="upload-document-dialog">Hủy</button><button class="button button--primary" type="submit">Tải lên</button></footer>
+    </form>
   </dialog>
 
   <dialog class="modal" id="device-key-dialog">

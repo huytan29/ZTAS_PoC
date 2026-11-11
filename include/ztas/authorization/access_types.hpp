@@ -35,6 +35,8 @@ struct AccessRequest{
     std::string device_id;
     std::string location_id;
     bool device_key_verified = false;
+    std::string source_ip;
+    bool source_ip_verified = false;
     ProtectedResource resource;
     std::string action;
 };
@@ -68,6 +70,8 @@ AccessRequest request{
     {"tan", "employee", 1, {"macbook-lab-01"}, 0},
     "macbook-lab-01",
     "lab-network",
+    true,
+    "192.0.2.15",
     true,
     {"secret_document", "secret", 4, ""},
     "read"

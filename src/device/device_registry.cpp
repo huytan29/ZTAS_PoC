@@ -125,8 +125,11 @@ bool verify_secret(
 
 } // namespace
 
-DeviceRegistry::DeviceRegistry(std::string credentials_file)
-    : credentials_file_(std::move(credentials_file)) {}
+DeviceRegistry::DeviceRegistry(
+    std::string credentials_file,
+    std::string devices_policy_file
+) : credentials_file_(std::move(credentials_file)),
+    devices_policy_file_(std::move(devices_policy_file)) {}
 
 bool DeviceRegistry::verify(
     const std::string& device_id,
@@ -146,4 +149,32 @@ bool DeviceRegistry::verify(
     } catch (const std::exception&) {
         return false;
     }
+}
+
+bool DeviceRegistry::verify_source_ip(
+    const std::string& device_id,
+    const std::string& source_ip
+) const {
+    if (device_id.empty() || source_ip.empty() || source_ip == "unknown") {
+        return false;
+    }
+
+    try {
+        std::ifstream file(devices_policy_file_);
+        const json policy = json::parse(file);
+        const auto& addresses = policy.at("devices").at(device_id)
+            .at("allowed_ip_addresses");
+        if (!addresses.is_array()) {
+            return false;
+        }
+        for (const auto& address : addresses) {
+            if (address.is_string() && address.get<std::string>() == source_ip) {
+                return true;
+            }
+        }
+    } catch (const std::exception&) {
+        return false;
+    }
+
+    return false;
 }

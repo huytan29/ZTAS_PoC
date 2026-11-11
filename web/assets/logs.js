@@ -13,6 +13,7 @@ let selectedEvents = [];
 
 const reasonText = {
   DEVICE_KEY_INVALID: "Khóa định danh thiết bị không hợp lệ",
+  DEVICE_IP_NOT_ALLOWED: "IP nguồn không thuộc địa chỉ được cấp cho thiết bị",
   DEVICE_NOT_REGISTERED: "Thiết bị chưa được đăng ký",
   DEVICE_REGISTRATION_INACTIVE: "Thiết bị đã bị vô hiệu hóa",
   LOCATION_NOT_ALLOWED_FOR_DEVICE: "Vị trí truy cập không khớp",
@@ -44,11 +45,15 @@ const eventTitles = {
   DEVICE_CONNECTION_REQUESTED: "Thiết bị gửi yêu cầu kết nối",
   DEVICE_CONNECTION_APPROVED: "Đã duyệt yêu cầu kết nối",
   DEVICE_BLOCKED: "Đã chặn thiết bị",
+  DEVICE_IP_UPDATED: "Đã cập nhật IP được phép của thiết bị",
+  STORED_DOCUMENT_UPLOADED: "Đã tải tài liệu vào phân vùng",
+  STORED_DOCUMENT_READ: "Đã đọc tài liệu từ phân vùng",
   ENROLLMENT_CODE_ISSUED: "Đã cấp mã đăng ký một lần",
   USER_CREATED: "Đã tạo tài khoản truy cập",
   USER_DELETED: "Đã xóa vĩnh viễn tài khoản",
   USER_DEVICE_ASSIGNED: "Đã gán tài khoản với thiết bị",
   USER_DEVICE_UNASSIGNED: "Đã gỡ gán tài khoản khỏi thiết bị",
+  MAC_CAPTURE_SETTING_CHANGED: "Đã thay đổi cài đặt thu thập MAC",
   AUDIT_LOG_SAVED: "Đã lưu riêng nhật ký audit",
   ADMIN_PASSWORD_CONFIGURED: "Đã thiết lập mật khẩu quản trị"
 };
@@ -98,7 +103,8 @@ function eventDetail(event) {
   return [
     event.reason_code && (reasonText[event.reason_code] ?? event.reason_code),
     event.username && `Người dùng ${event.username}`,
-    event.device_id && `Thiết bị ${event.device_id}`
+    event.device_id && `Thiết bị ${event.device_id}`,
+    event.source_ip && `IP ${event.source_ip}`
   ].filter(Boolean).join(" · ") || "Sự kiện vận hành hệ thống";
 }
 

@@ -87,6 +87,28 @@ Không cần thay đổi PowerShell Execution Policy vì dự án không chạy 
 - Server lắng nghe `0.0.0.0:8020` để máy ảo/container trong lab có thể kết nối.
   Chỉ mở firewall cổng này trong mạng lab tin cậy.
 
+## Đặt tài liệu theo phân vùng quyền
+
+Khi ZTAS khởi động, hệ thống tạo các thư mục sau để chứa tài liệu thực tế của
+bạn. Có thể mở đường dẫn từ mục **Khu dữ liệu được bảo vệ** trên Dashboard
+(cần quyền admin) và sao chép tệp trực tiếp vào đúng phân vùng:
+
+```text
+data/documents/public/
+data/documents/internal/
+data/documents/confidential/
+data/documents/secret/
+data/documents/restricted/
+```
+
+Các tệp không được commit Git. Tải một tệp qua
+`GET /documents/<zone>/<filename>`; ZTAS xác thực token, Device Key, IP nguồn
+và OPA trước khi trả nội dung. Ví dụ: `/documents/internal/ke-hoach.pdf`.
+Không dùng tên tệp bắt đầu bằng dấu chấm, chứa thư mục con hoặc lớn hơn 25 MB.
+Quyền của mỗi phân vùng dùng policy cùng cấp trong `policies/resources.json`.
+Admin cũng có thể chọn **Tải tài liệu lên** ngay trên Dashboard, chọn phân vùng
+rồi nạp tệp; chọn lại cùng tên sẽ thay thế tệp cũ trong chính phân vùng đó.
+
 ## Audit log tập trung và retention
 
 - Audit log hoạt động được giữ **5 ngày lịch** trong `data/logs/`. Khi ZTAS

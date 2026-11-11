@@ -45,10 +45,13 @@ Trên Dashboard, chọn **Thêm thiết bị** và điền chính xác:
 2. Trust Level (1–5).
 3. Vùng mạng.
 4. Tài khoản được gán.
+5. IPv4 hoặc IPv6 nguồn. Neu duyet tu hang cho, Dashboard da tu dien IP TCP ma
+   ZTAS vua quan sat; khong dung `X-Forwarded-For` do client co the gia mao.
 
 Hệ thống sinh Device Key một lần và tải tệp `<device-id>.env`. Sao chép tệp này
-vào đúng VMware VM hoặc Docker container. Thiết bị chỉ xuất hiện Dashboard sau
-khi hoàn tất bốn thông tin trên.
+vào đúng VMware VM hoặc Docker container. Mỗi yêu cầu sau đó phải có cả Device
+Key hợp lệ và đúng IP đã được cấp; điều này áp dụng như nhau với Windows, macOS
+và Linux.
 
 ## 3. VMware VM
 

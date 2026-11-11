@@ -1,5 +1,6 @@
 (() => {
   const storageKey = "ztas_theme";
+  const sidebarStorageKey = "ztas_sidebar_open";
   const root = document.documentElement;
   const systemPrefersDark = window.matchMedia("(prefers-color-scheme: dark)");
 
@@ -26,6 +27,28 @@
   document.querySelectorAll("[data-theme-toggle]").forEach(button => {
     button.addEventListener("click", () => {
       applyTheme(currentTheme() === "dark" ? "light" : "dark", true);
+    });
+  });
+
+  function applySidebar(open, persist = false) {
+    root.dataset.sidebarOpen = String(open);
+    document.querySelectorAll("[data-sidebar-toggle]").forEach(button => {
+      button.setAttribute("aria-expanded", String(open));
+      button.setAttribute("aria-label", open ? "Ẩn menu" : "Mở menu");
+      button.setAttribute("title", open ? "Ẩn menu" : "Mở menu");
+      if (button.classList.contains("sidebar-launcher")) {
+        button.querySelector("span").textContent = open ? "×" : "☰";
+      } else {
+        button.textContent = open ? "×" : "☰";
+      }
+    });
+    if (persist) localStorage.setItem(sidebarStorageKey, String(open));
+  }
+
+  applySidebar(localStorage.getItem(sidebarStorageKey) === "true");
+  document.querySelectorAll("[data-sidebar-toggle]").forEach(button => {
+    button.addEventListener("click", () => {
+      applySidebar(root.dataset.sidebarOpen !== "true", true);
     });
   });
 })();

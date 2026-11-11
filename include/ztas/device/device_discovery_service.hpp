@@ -14,6 +14,7 @@ struct PendingDeviceRequest {
     std::string device_id;
     std::string location_id;
     std::string source_ip;
+    std::string declared_mac_address;
     std::string user_agent;
     std::string device_name;
     std::string device_type;
@@ -35,6 +36,7 @@ public:
         const std::string& location_id,
         const std::string& source_ip,
         const std::string& user_agent,
+        const std::string& declared_mac_address = "",
         const std::string& device_name = "",
         const std::string& device_type = "",
         const std::string& enrollment_profile = "",

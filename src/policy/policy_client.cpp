@@ -27,7 +27,9 @@ std::optional<AccessDecision> PolicyClient::decide(
             }},
             {"device", {
                 {"id", request.device_id},
-                {"key_verified", request.device_key_verified}
+                {"key_verified", request.device_key_verified},
+                {"source_ip", request.source_ip},
+                {"ip_verified", request.source_ip_verified}
             }},
             {"context", {
                 {"location_id", request.location_id}

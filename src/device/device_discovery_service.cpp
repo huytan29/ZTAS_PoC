@@ -71,6 +71,7 @@ DiscoveryResult DeviceDiscoveryService::record_attempt(
     const std::string& location_id,
     const std::string& source_ip,
     const std::string& user_agent,
+    const std::string& declared_mac_address,
     const std::string& device_name,
     const std::string& device_type,
     const std::string& enrollment_profile,
@@ -100,6 +101,9 @@ DiscoveryResult DeviceDiscoveryService::record_attempt(
         discovery["location_id"] = location_id;
         discovery["source_ip"] = source_ip;
         discovery["user_agent"] = user_agent;
+        if (!declared_mac_address.empty()) {
+            discovery["declared_mac_address"] = declared_mac_address;
+        }
         if (!device_name.empty()) discovery["device_name"] = device_name;
         if (!device_type.empty()) discovery["device_type"] = device_type;
         if (!enrollment_profile.empty()) discovery["enrollment_profile"] = enrollment_profile;
@@ -134,6 +138,7 @@ std::vector<PendingDeviceRequest> DeviceDiscoveryService::list_pending() const {
                 iterator.key(),
                 discovery.value("location_id", "unknown"),
                 discovery.value("source_ip", "unknown"),
+                discovery.value("declared_mac_address", ""),
                 discovery.value("user_agent", "unknown"),
                 discovery.value("device_name", ""),
                 discovery.value("device_type", "unknown"),

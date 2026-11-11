@@ -6,13 +6,24 @@
 // File credentials chi luu PBKDF2 hash, khong luu khoa thiet bi dang ro.
 class DeviceRegistry {
 public:
-    explicit DeviceRegistry(std::string credentials_file);
+    DeviceRegistry(
+        std::string credentials_file,
+        std::string devices_policy_file
+    );
 
     bool verify(
         const std::string& device_id,
         const std::string& device_key
     ) const;
 
+    // Chi chap nhan IP ma server nhin thay tu ket noi TCP. Gia tri nay co the
+    // la IPv4 hoac IPv6; khong doc X-Forwarded-For do client co the gia mao.
+    bool verify_source_ip(
+        const std::string& device_id,
+        const std::string& source_ip
+    ) const;
+
 private:
     std::string credentials_file_;
+    std::string devices_policy_file_;
 };

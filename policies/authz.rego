@@ -49,6 +49,12 @@ device_key_verified if {
     input.device.key_verified == true
 }
 
+# IP lay tu ket noi TCP ma ZTAS quan sat, co the la IPv4 hoac IPv6. Khong tin
+# header do client tu khai bao. Danh sach IP duoc cap khi admin duyet thiet bi.
+device_ip_verified if {
+    input.device.ip_verified == true
+}
+
 # Tai khoan thuong co expires_at = 0. Guest nhan expires_at luc dang nhap,
 # vi vay token guest tu mat hieu luc sau thoi gian tam cap quyen.
 account_active if {
@@ -200,6 +206,19 @@ decision := output(
 
 decision := output(
     "DENY",
+    "ZTAS-1008",
+    "DEVICE_IP_NOT_ALLOWED",
+    "critical",
+    1
+) if {
+    valid_context
+    device_registered
+    device_key_verified
+    not device_ip_verified
+}
+
+decision := output(
+    "DENY",
     "ZTAS-1006",
     "ACCOUNT_DEVICE_BINDING_FAILED",
     "high",
@@ -208,6 +227,7 @@ decision := output(
     valid_context
     device_registered
     device_key_verified
+    device_ip_verified
     account_active
     not account_device_bound
 }
@@ -222,6 +242,7 @@ decision := output(
     valid_context
     device_registered
     device_key_verified
+    device_ip_verified
     account_active
     account_device_bound
     not location_matches_device
@@ -237,6 +258,7 @@ decision := output(
     valid_context
     device_registered
     device_key_verified
+    device_ip_verified
     account_active
     account_device_bound
     location_matches_device
@@ -253,6 +275,7 @@ decision := output(
     valid_context
     device_registered
     device_key_verified
+    device_ip_verified
     account_active
     account_device_bound
     location_matches_device
@@ -270,6 +293,7 @@ decision := output(
     valid_context
     device_registered
     device_key_verified
+    device_ip_verified
     account_active
     account_device_bound
     location_matches_device
@@ -288,6 +312,7 @@ decision := output(
     valid_context
     device_registered
     device_key_verified
+    device_ip_verified
     account_active
     account_device_bound
     location_matches_device
@@ -307,6 +332,7 @@ decision := output(
     valid_context
     device_registered
     device_key_verified
+    device_ip_verified
     account_active
     account_device_bound
     location_matches_device

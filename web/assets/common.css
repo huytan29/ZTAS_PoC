@@ -43,6 +43,7 @@
 
 body {
   margin: 0;
+  min-height: 100vh;
   background: var(--bg);
   color: var(--ink);
   font: 14px/1.45 Inter, ui-sans-serif, system-ui, -apple-system,
@@ -110,6 +111,30 @@ body {
 }
 
 .service-status--offline { color: #f5bec6; }
+
+/* Chi ba muc dieu huong la sidebar truot; thanh thuong hieu giu ngang. */
+:root { --navigation-panel-width: 248px; }
+.topbar { position:sticky; z-index:30; top:0; width:auto; min-height:66px; }
+.topbar__content { flex-direction:row; align-items:center; justify-content:space-between; gap:16px; width:auto; min-height:66px; max-width:1240px; margin:auto; padding:0 clamp(16px, 4vw, 28px); }
+.topbar__identity { display:flex; align-items:center; min-width:0; gap:11px; }
+.topbar__controls { display:flex; align-items:center; justify-content:flex-end; gap:7px; }
+.sidebar-launcher { display:grid; width:34px; height:34px; flex:0 0 auto; place-items:center; padding:0; border:1px solid #ffffff3b; border-radius:8px; background:#ffffff0d; color:#d9e4f3; cursor:pointer; font:inherit; transition:background .16s ease, color .16s ease; }
+.sidebar-launcher span { font-size:18px; line-height:1; }.sidebar-launcher:hover { background:#ffffff1d; color:#fff; }
+.sidebar-toggle { display:grid; width:31px; height:31px; place-items:center; cursor:pointer; border:1px solid #ffffff29; border-radius:8px; background:#ffffff0d; color:#d9e4f3; font:inherit; font-size:20px; line-height:1; }
+.sidebar-toggle:hover { background:#ffffff1d; color:#fff; }
+.navigation { position:fixed; z-index:25; top:66px; bottom:0; left:0; display:block; width:var(--navigation-panel-width); padding:0; border-right:1px solid #ffffff1e; background:linear-gradient(180deg, #122844 0%, #10223a 100%); box-shadow:12px 10px 30px rgba(5,16,32,.26); transform:translateX(-100%); transition:transform .22s cubic-bezier(.2,.8,.2,1); }
+.navigation__header { display:flex; align-items:center; justify-content:space-between; padding:21px 17px 16px; border-bottom:1px solid #ffffff16; }
+.navigation__header span { display:block; color:#8ca7c9; font-size:9px; font-weight:800; letter-spacing:.12em; }.navigation__header strong { display:block; margin-top:3px; color:#fff; font-size:15px; }
+.navigation__links { display:grid; gap:6px; padding:14px 12px; }
+.navigation__link { display:flex; align-items:center; gap:10px; min-height:44px; padding:11px 12px; border:1px solid transparent; border-radius:9px; }
+.navigation__link::before { display:inline-grid; width:18px; flex:0 0 18px; place-items:center; color:#b8c6d8; font-size:16px; content:""; }
+.navigation__link:nth-child(1)::before { content:"▣"; }
+.navigation__link:nth-child(2)::before { content:"☷"; }
+.navigation__link:nth-child(3)::before { content:"◉"; }
+.navigation__link--active { border-color:#ffffff12; background:linear-gradient(90deg, #3c5b83, #304a6b); box-shadow:inset 3px 0 0 #78a7ff; }.navigation__link--active::before { color:#fff; }
+.page-container { width:100%; max-width:1240px; margin:auto; transition:width .22s ease, margin-left .22s ease, margin-right .22s ease; }
+:root[data-sidebar-open="true"] .navigation { transform:translateX(0); }
+:root[data-sidebar-open="true"] .page-container { width:calc(100% - var(--navigation-panel-width)); max-width:none; margin-left:var(--navigation-panel-width); margin-right:0; }
 
 .status-dot {
   display: inline-block;
@@ -193,9 +218,12 @@ body {
 }
 
 @media (max-width: 560px) {
-  .topbar__content { flex-wrap: wrap; align-content: center; padding-top: 8px; padding-bottom: 8px; }
-  .navigation { width: 100%; justify-content: space-between; }
-  .service-status { display: none; }
+  .topbar__content { padding-left:16px; padding-right:16px; }
+  .brand { font-size:15px; }
+  .brand > span:last-child { max-width:142px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .navigation { width:min(82vw, var(--navigation-panel-width)); }
+  :root[data-sidebar-open="true"] .page-container { width:100%; margin-left:auto; margin-right:auto; }
+  .service-status { display:none; }
   .page-heading { display: block; }
   .last-updated { display: block; margin-top: 10px; }
   .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -203,5 +231,9 @@ body {
 
 @media (max-width: 360px) {
   .metric-grid { grid-template-columns: 1fr; }
-  .brand { font-size: 15px; }
+  .brand > span:last-child { display:none; }
+  .topbar__identity { gap:7px; }
+  .topbar__controls { gap:4px; }
+  .theme-toggle, .navigation__logout { padding-left:7px; padding-right:7px; }
+  .theme-toggle span { display:none; }
 }
