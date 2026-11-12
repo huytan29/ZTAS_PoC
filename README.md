@@ -18,6 +18,32 @@ GNU Make và dependency manager.
 Docker Desktop phải đang chạy trên cả hai nền tảng. `Makefile` là điểm vào duy
 nhất để build/vận hành; không có script khởi động riêng.
 
+## Khởi tạo source trên máy mới
+
+Hai script bootstrap chỉ clone mã nguồn từ GitHub vào một thư mục mới; chúng
+không tự cài dependency, không ghi đè source sẵn có và không tự chạy dịch vụ.
+Vì vậy chúng an toàn để dùng lần đầu trên máy Windows hoặc macOS.
+
+**Windows (CMD):** tải `scripts/bootstrap-windows.cmd` từ repository hoặc copy
+script này sang máy mới, sau đó chạy:
+
+```cmd
+bootstrap-windows.cmd
+```
+
+Mặc định source sẽ nằm tại `%USERPROFILE%\source\ZTAS_PoC`. Có thể chỉ định
+thư mục đích, ví dụ `bootstrap-windows.cmd E:\Projects\ZTAS_PoC`.
+
+**macOS:**
+
+```zsh
+sh scripts/bootstrap-macos.sh
+```
+
+Mặc định source sẽ nằm tại `~/source/ZTAS_PoC`; có thể truyền thư mục đích làm
+tham số thứ nhất. Sau khi clone, tiếp tục theo hướng dẫn build của từng nền
+tảng phía dưới.
+
 Windows 8.1 trở xuống không được hỗ trợ bởi phiên bản `cpp-httplib` hiện tại
 (`0.65+`), nên dự án target Windows 10 trở lên.
 
