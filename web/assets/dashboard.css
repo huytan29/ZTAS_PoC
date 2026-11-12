@@ -85,30 +85,31 @@
 .section-heading > span { color: var(--muted); font-size: 12px; }
 .section-heading__actions { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 12px; }
 .device-grid { min-width: 0; }
-.device-table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); box-shadow: var(--shadow); }
-.device-table { width: 100%; min-width: 1040px; border-collapse: collapse; text-align: left; }
+.device-table-wrap { overflow-x: auto; overflow-y: hidden; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); box-shadow: var(--shadow); scrollbar-color: #5e7190 transparent; scrollbar-width: thin; }
+.device-table-wrap::-webkit-scrollbar { height: 10px; }.device-table-wrap::-webkit-scrollbar-track { background: transparent; }.device-table-wrap::-webkit-scrollbar-thumb { border: 3px solid var(--surface); border-radius: 999px; background: #5e7190; }
+.device-table { width: max(100%, 1480px); min-width: 1480px; border-collapse: collapse; table-layout: auto; text-align: left; }
 .device-table th { padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--surface-alt); color: var(--muted); font-size: 11px; font-weight: 760; letter-spacing: .35px; text-transform: uppercase; white-space: nowrap; }
 .device-table td { padding: 14px 16px; border-bottom: 1px solid var(--line); color: var(--ink); font-size: 13px; vertical-align: middle; }
 .device-table tbody tr:last-child td { border-bottom: 0; }
 .device-table tbody tr:hover { background: var(--surface-hover); }
-.device-table__device { min-width: 175px; color: var(--ink) !important; white-space: nowrap; }
+.device-table__device { min-width: 220px; color: var(--ink) !important; white-space: nowrap; }
 .device-table__device .status-dot { margin-right: 9px; }
 .device-table__id { display:block; margin:4px 0 0 21px; color:var(--muted); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
 .device-status { display: inline-block; padding: 5px 8px; border-radius: 999px; font-size: 11px; font-weight: 760; white-space: nowrap; }
 .device-status--identified { background: var(--green-soft); color: var(--green); }
 .device-status--unidentified { background: var(--red-soft); color: var(--red); }
 .device-status--step-up { background: var(--amber-soft); color: var(--amber); }
-.device-zone { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #51647c; font-size: 12px; white-space: nowrap; }
+.device-zone { min-width: 145px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #51647c; font-size: 12px; white-space: nowrap; }
 .trust-value { font-weight: 760; color: var(--ink); white-space: nowrap; }
-.device-table__accounts { min-width: 175px; }
+.device-table__accounts { min-width: 220px; }
 .account-chip { display:inline-flex; flex-direction:column; margin:2px 4px 2px 0; padding:4px 7px; border:1px solid #d7e3f2; border-radius:6px; background:#f7faff; color:#2e527c; font-size:11px; font-weight:760; line-height:1.15; }
 .account-chip small { margin-top:2px; color:#74869d; font-size:9px; font-weight:650; }
 .account-empty { color:var(--muted); font-size:12px; font-style:italic; }
-.device-table__activity { min-width: 200px; }
+.device-table__activity { min-width: 250px; }
 .device-table__activity strong,.device-table__activity span { display: block; }
 .device-table__activity strong { font-size: 12px; font-weight: 650; }
 .device-table__activity span { margin-top: 3px; color: var(--muted); font-size: 11px; }
-.device-table__actions { display: flex; min-width: 185px; gap: 7px; white-space: nowrap; }
+.device-table__actions { display: flex; min-width: 310px; flex-wrap: nowrap; gap: 7px; white-space: nowrap; }
 .button--small { padding: 6px 9px; font-size: 11px; }
 
 .button { cursor: pointer; border: 1px solid transparent; border-radius: 7px; padding: 8px 11px; font: inherit; font-weight: 720; }
@@ -133,10 +134,8 @@
 @media (max-width: 560px) {
   .section-heading { align-items: start; flex-direction: column; }
   .section-heading__actions { width: 100%; justify-content: space-between; }
-  .device-table { min-width: 760px; }
 }
 
 @media (max-width: 360px) {
   .chart-panel { grid-template-columns: 1fr; justify-items: center; }
-  .device-table { min-width: 700px; }
 }

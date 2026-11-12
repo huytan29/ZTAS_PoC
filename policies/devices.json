@@ -38,10 +38,22 @@
       "device_name": "Ubuntu VM 03",
       "device_type": "ubuntu",
       "enrollment_profile": "managed-vm",
-      "lifecycle_status": "ACTIVE",
+      "lifecycle_status": "REVOKED",
       "location_id": "lab-network",
-      "registered": true,
+      "registered": false,
       "trust_level": 3
+    },
+    "windows-laptop-01": {
+      "allowed_ip_addresses": [
+        "192.168.2.1"
+      ],
+      "device_name": "Windows Laptop 01",
+      "device_type": "windows",
+      "enrollment_profile": "trusted",
+      "lifecycle_status": "ACTIVE",
+      "location_id": "campus-network",
+      "registered": true,
+      "trust_level": 4
     }
   }
 }

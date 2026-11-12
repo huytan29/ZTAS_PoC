@@ -146,8 +146,13 @@ async function readResponse(response) {
 }
 
 async function stepUp(data) {
-  const hint = data.demo_code ? ` Mã demo: ${data.demo_code}` : "";
-  const code = window.prompt(`Cần xác thực bổ sung cấp ${data.required_auth_level}.${hint}`);
+  let code = "";
+  if (data.mfa_status === "PENDING_ADMIN_CODE") {
+    code = await waitForAdminCode(data);
+  } else {
+    const hint = data.demo_code ? ` Mã demo: ${data.demo_code}` : "";
+    code = window.prompt(`Cần xác thực bổ sung cấp ${data.required_auth_level}.${hint}`);
+  }
   if (!code) throw new Error("Đã hủy xác thực bổ sung.");
   const response = await fetch("/api/step-up", {
     method: "POST",
@@ -158,6 +163,27 @@ async function stepUp(data) {
   if (!response.ok) throw new Error(result.error || "Xác thực bổ sung không thành công");
   token = result.access_token;
   sessionStorage.setItem("ztas_document_token", token);
+}
+
+async function waitForAdminCode(data) {
+  viewerTitle.textContent = "Đang chờ quản trị viên cấp mã MFA";
+  viewerContent.innerHTML = `<div class="document-message"><strong>Yêu cầu đã vào hàng chờ.</strong><span>Admin cần xem xét yêu cầu và cấp mã xác thực cấp ${escapeHtml(data.required_auth_level)}. Mã sẽ được admin cung cấp cho bạn qua kênh an toàn.</span></div>`;
+
+  const deadline = Date.now() + 10 * 60 * 1000;
+  while (Date.now() < deadline) {
+    await new Promise(resolve => window.setTimeout(resolve, 2000));
+    const response = await fetch(`/api/mfa-challenges/${encodeURIComponent(data.challenge_id)}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const status = await response.json().catch(() => ({}));
+    if (response.ok && status.status === "CODE_READY") {
+      const code = window.prompt("Admin đã cấp mã MFA. Nhập mã bạn nhận được để tiếp tục:");
+      if (!code) throw new Error("Đã hủy xác thực bổ sung.");
+      return code;
+    }
+    if (response.status === 404) throw new Error("Yêu cầu MFA đã hết hạn hoặc bị thu hồi.");
+  }
+  throw new Error("Hết thời gian chờ admin cấp mã MFA.");
 }
 
 async function loadStoredDocuments(zone) {
@@ -172,6 +198,11 @@ async function loadStoredDocuments(zone) {
       response = await fetch(`/api/document-files/${encodeURIComponent(zone)}`, { headers: requestHeaders() });
     }
     const data = await response.json().catch(() => ({}));
+    if (!response.ok && data.effect === "STEP_UP") {
+      setDecision("STEP_UP", "CẦN MFA");
+      await stepUp(data);
+      return loadStoredDocuments(zone);
+    }
     if (!response.ok) throw new Error(data.reason_code || data.error || "Không thể tải danh sách tệp");
     viewerTitle.textContent = `Tệp trong vùng ${labels[zone]}`;
     viewerContent.innerHTML = "<p>Đã được cấp quyền. Chọn một tệp bên dưới để mở cửa sổ đọc.</p>";

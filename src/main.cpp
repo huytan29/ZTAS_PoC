@@ -620,7 +620,9 @@ void handle_document_request(
     if (decision.effect == "STEP_UP") {
         const MfaChallenge challenge = mfa_service.issue_challenge(
             *subject,
-            decision.required_auth_level
+            decision.required_auth_level,
+            device_id,
+            decision.resource_id
         );
 
         if (challenge.challenge_id.empty()) {
@@ -645,11 +647,8 @@ void handle_document_request(
 
         body["challenge_id"] = challenge.challenge_id;
         body["expires_at"] = challenge.expires_at;
-        body["challenge_type"] = "OTP";
-
-        if (challenge.demo_code.has_value()) {
-            body["demo_code"] = *challenge.demo_code;
-        }
+        body["challenge_type"] = "ADMIN_APPROVED_CODE";
+        body["mfa_status"] = "PENDING_ADMIN_CODE";
 
         send_json(response, 403, body);
         return;
@@ -799,9 +798,6 @@ int main() {
     const std::string token_secret =
         env_or_default("APP_TOKEN_SECRET", "");
 
-    const bool demo_mfa_enabled =
-        env_flag("ZTAS_DEMO_MFA", false);
-
     if (token_secret.size() < 32) {
         std::cerr
             << "APP_TOKEN_SECRET phai co it nhat 32 ky tu\n";
@@ -845,7 +841,7 @@ int main() {
         device_environment_directory,
         users_file
     );
-    MfaService mfa_service(token_secret, demo_mfa_enabled);
+    MfaService mfa_service(token_secret);
     const AccessService access_service(
         policy_client,
         audit_logger
@@ -861,7 +857,7 @@ int main() {
     // Gioi han tai lieu 25 MiB va phan du cho multipart/form-data.
     server.set_payload_max_length(26 * 1024 * 1024);
 
-    server.Get("/health", [&opa_host, demo_mfa_enabled, &data_store](
+    server.Get("/health", [&opa_host, &data_store](
         const httplib::Request&,
         httplib::Response& response
     ) {
@@ -869,7 +865,7 @@ int main() {
             {"service", "ztas"},
             {"status", "UP"},
             {"opa_host", opa_host},
-            {"demo_mfa_enabled", demo_mfa_enabled},
+            {"admin_approved_mfa", true},
             {"data_store", data_store.is_ready() ? "UP" : "DOWN"}
         });
     });
@@ -2627,6 +2623,8 @@ int main() {
     server.Get(R"(/api/document-files/([^/]+))", [
         &auth_service,
         &device_registry,
+        &mfa_service,
+        &audit_logger,
         &access_service,
         &document_storage_directory
     ](
@@ -2665,6 +2663,39 @@ int main() {
             send_json(response, 502, {{"error", decision.reason_code}});
             return;
         }
+        if (decision.effect == "STEP_UP") {
+            const MfaChallenge challenge = mfa_service.issue_challenge(
+                *subject,
+                decision.required_auth_level,
+                device_id,
+                decision.resource_id
+            );
+            if (challenge.challenge_id.empty()) {
+                audit_logger.write({
+                    {"event_type", "MFA_CHALLENGE_ERROR"},
+                    {"username", subject->username},
+                    {"reason_code", "OTP_GENERATION_FAILED"}
+                });
+                send_json(response, 500, {{"error", "OTP_GENERATION_FAILED"}});
+                return;
+            }
+
+            audit_logger.write({
+                {"event_type", "MFA_CHALLENGE_ISSUED"},
+                {"username", subject->username},
+                {"challenge_id", challenge.challenge_id},
+                {"required_auth_level", challenge.required_auth_level},
+                {"expires_at", challenge.expires_at}
+            });
+
+            json body = decision_json(decision);
+            body["challenge_id"] = challenge.challenge_id;
+            body["expires_at"] = challenge.expires_at;
+            body["challenge_type"] = "ADMIN_APPROVED_CODE";
+            body["mfa_status"] = "PENDING_ADMIN_CODE";
+            send_json(response, 403, body);
+            return;
+        }
         if (!decision.is_permitted()) {
             send_json(response, 403, decision_json(decision));
             return;
@@ -2682,6 +2713,94 @@ int main() {
             error.clear();
         }
         send_json(response, 200, {{"files", files}, {"decision", decision_json(decision)}});
+    });
+
+    // Hàng chờ MFA: chỉ admin mới nhìn được toàn bộ yêu cầu và không có mã
+    // bí mật nào được trả về từ API này.
+    server.Get("/api/mfa-requests", [
+        &auth_service,
+        &mfa_service
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto admin = authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) return;
+
+        json requests = json::array();
+        for (const auto& item : mfa_service.list_requests()) {
+            requests.push_back({
+                {"challenge_id", item.challenge_id},
+                {"username", item.username},
+                {"role", item.role},
+                {"device_id", item.device_id},
+                {"resource_id", item.resource_id},
+                {"required_auth_level", item.required_auth_level},
+                {"requested_at", item.requested_at},
+                {"expires_at", item.expires_at},
+                {"code_ready", item.code_ready}
+            });
+        }
+        send_json(response, 200, {{"requests", requests}});
+    });
+
+    // Client chỉ thấy trạng thái yêu cầu của chính mình để biết khi nào admin
+    // đã cấp mã. Mã không được gửi lại cho client.
+    server.Get(R"(/api/mfa-challenges/([^/]+))", [
+        &auth_service,
+        &mfa_service
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto subject = authenticate_request(request, auth_service, response);
+        if (!subject.has_value()) return;
+
+        const auto item = mfa_service.request_status(*subject, request.matches[1]);
+        if (!item.has_value()) {
+            send_json(response, 404, {{"error", "MFA_CHALLENGE_NOT_FOUND"}});
+            return;
+        }
+        send_json(response, 200, {
+            {"challenge_id", item->challenge_id},
+            {"required_auth_level", item->required_auth_level},
+            {"expires_at", item->expires_at},
+            {"status", item->code_ready ? "CODE_READY" : "PENDING_ADMIN_CODE"}
+        });
+    });
+
+    server.Post(R"(/api/mfa-requests/([^/]+)/code)", [
+        &auth_service,
+        &mfa_service,
+        &audit_logger
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto admin = authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) return;
+
+        try {
+            const json body = json::parse(request.body);
+            const std::string code = body.value("code", "");
+            const std::string challenge_id = request.matches[1];
+            if (!mfa_service.issue_admin_code(challenge_id, code)) {
+                send_json(response, 400, {
+                    {"error", "MFA_CODE_POLICY_OR_REQUEST_INVALID"},
+                    {"message", "Mã cần ít nhất 6 chữ số, 1 chữ hoa và 1 ký tự đặc biệt; yêu cầu cũng phải còn hiệu lực."}
+                });
+                return;
+            }
+            audit_logger.write({
+                {"event_type", "MFA_CODE_ISSUED_BY_ADMIN"},
+                {"username", admin->username},
+                {"challenge_id", challenge_id},
+                {"reason_code", "ADMIN_APPROVED"}
+            });
+            send_json(response, 200, {{"status", "CODE_READY"}});
+        } catch (const json::parse_error&) {
+            send_json(response, 400, {{"error", "INVALID_JSON"}});
+        }
     });
 
     server.Post("/api/step-up", [

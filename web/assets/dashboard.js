@@ -32,6 +32,10 @@ let issuedCredential = null;
 let issuedEnrollmentCode = "";
 let assignableUsers = [];
 let weatherLoading = false;
+let deviceViewSignature = "";
+let deviceTableScrollLeft = 0;
+let deviceTableInteractionUntil = 0;
+let selectedMfaChallengeId = "";
 
 const weatherArt = {
   clear: '<svg class="weather-graphic weather-graphic--clear" viewBox="0 0 48 48" role="img"><circle class="weather-sun" cx="24" cy="24" r="10" fill="#f6b73c"/><g class="weather-rays" stroke="#f6b73c" stroke-width="3" stroke-linecap="round"><path d="M24 4v5M24 39v5M4 24h5M39 24h5M10 10l4 4M34 34l4 4M38 10l-4 4M14 34l-4 4"/></g></svg>',
@@ -198,13 +202,13 @@ function renderDeviceCards(devices) {
 
       return `
         <tr>
-          <td class="device-table__device"><i class="status-dot status-dot--${dotClass}"></i><strong>${escapeHtml(device.device_name || device.id)}</strong><span class="device-table__id">${escapeHtml(device.id)} · ${escapeHtml(device.device_type || "unknown")}</span></td>
-          <td><span class="device-status device-status--${info.cardClass}">${info.label}</span></td>
-          <td><span class="device-zone">${escapeHtml(device.location_id)}</span></td>
-          <td><span class="trust-value">${escapeHtml(device.trust_level)}/5</span></td>
-          <td class="device-table__accounts">${assignedAccounts(device)}</td>
-          <td class="device-table__activity"><strong>${lastActivity(device)}</strong><span>${formatTime(device.last_seen)}</span></td>
-          <td class="device-table__actions">
+          <td data-label="Thiết bị" class="device-table__device"><i class="status-dot status-dot--${dotClass}"></i><strong>${escapeHtml(device.device_name || device.id)}</strong><span class="device-table__id">${escapeHtml(device.id)} · ${escapeHtml(device.device_type || "unknown")}</span></td>
+          <td data-label="Trạng thái Zero Trust"><span class="device-status device-status--${info.cardClass}">${info.label}</span></td>
+          <td data-label="Vùng mạng"><span class="device-zone">${escapeHtml(device.location_id)}</span></td>
+          <td data-label="Độ tin cậy"><span class="trust-value">${escapeHtml(device.trust_level)}/5</span></td>
+          <td data-label="Tài khoản được gán" class="device-table__accounts">${assignedAccounts(device)}</td>
+          <td data-label="Hoạt động gần nhất" class="device-table__activity"><strong>${lastActivity(device)}</strong><span>${formatTime(device.last_seen)}</span></td>
+          <td data-label="Thao tác" class="device-table__actions">
             ${device.registered
               ? `<button class="button button--secondary button--small" data-update-device-ip="${escapeHtml(device.id)}">Cập nhật IP</button><button class="button button--secondary button--small" data-revoke-device="${escapeHtml(device.id)}">Thu hồi</button><button class="button button--danger-outline button--small" data-block-device="${escapeHtml(device.id)}">Chặn</button>`
               : `<button class="button button--secondary button--small" data-reenroll-device="${escapeHtml(device.id)}">Đăng ký lại</button>`}
@@ -221,6 +225,27 @@ function renderDeviceCards(devices) {
         <tbody>${rows}</tbody>
       </table>
     </div>`;
+
+  const tableWrap = container.querySelector(".device-table-wrap");
+  if (tableWrap) {
+    // Việc dựng lại bảng sau khi dữ liệu đổi không được làm người dùng mất vị
+    // trí đang kéo ngang. Đặt lại sau hai khung hình để trình duyệt hoàn tất
+    // tính kích thước bảng trước.
+    const restoreScroll = () => { tableWrap.scrollLeft = deviceTableScrollLeft; };
+    requestAnimationFrame(() => requestAnimationFrame(restoreScroll));
+
+    const markInteraction = () => {
+      deviceTableInteractionUntil = Date.now() + 1800;
+    };
+    tableWrap.addEventListener("scroll", () => {
+      deviceTableScrollLeft = tableWrap.scrollLeft;
+      markInteraction();
+    }, { passive: true });
+    ["pointerdown", "pointermove", "touchstart", "wheel"].forEach(eventName => {
+      tableWrap.addEventListener(eventName, markInteraction, { passive: true });
+    });
+  }
+
   container.querySelectorAll("[data-revoke-device]").forEach(button => {
     button.addEventListener("click", () => {
       requireAdmin(() => openRevokeDialog(button.dataset.revokeDevice));
@@ -311,6 +336,44 @@ function renderConnectionRequests(requests) {
   });
 }
 
+function renderMfaRequests(requests) {
+  const container = document.querySelector("#mfa-request-list");
+  const count = document.querySelector("#pending-mfa-request-count");
+  const pending = requests.filter(request => !request.code_ready);
+  count.textContent = `${pending.length} yêu cầu chờ`;
+
+  if (!requests.length) {
+    container.innerHTML = '<p class="empty-state">Không có yêu cầu MFA đang chờ xử lý.</p>';
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="connection-request-table">
+      <thead><tr><th>Người dùng / thiết bị</th><th>Tài nguyên yêu cầu</th><th>Mức MFA</th><th>Thời điểm yêu cầu</th><th>Trạng thái</th><th>Thao tác admin</th></tr></thead>
+      <tbody>${requests.map(request => `
+        <tr>
+          <td><strong>${escapeHtml(request.username)}</strong><span class="request-account">${escapeHtml(request.role)} · ${escapeHtml(request.device_id)}</span></td>
+          <td><span class="device-zone">${escapeHtml(request.resource_id)}</span></td>
+          <td><span class="trust-value">Cấp ${escapeHtml(request.required_auth_level)}</span></td>
+          <td class="request-time"><strong>${formatTime(request.requested_at)}</strong><span>Hết hạn: ${formatTime(request.expires_at)}</span></td>
+          <td><span class="device-status device-status--${request.code_ready ? "identified" : "step-up"}">${request.code_ready ? "Đã cấp mã" : "Chờ admin"}</span></td>
+          <td>${request.code_ready
+            ? '<span class="account-empty">Đang chờ người dùng nhập mã</span>'
+            : `<button class="button button--primary button--small" data-issue-mfa-code="${escapeHtml(request.challenge_id)}" data-mfa-user="${escapeHtml(request.username)}" data-mfa-resource="${escapeHtml(request.resource_id)}">Tạo mã</button>`}</td>
+        </tr>`).join("")}</tbody>
+    </table>`;
+
+  container.querySelectorAll("[data-issue-mfa-code]").forEach(button => {
+    button.addEventListener("click", () => {
+      requireAdmin(() => openMfaCodeDialog(
+        button.dataset.issueMfaCode,
+        button.dataset.mfaUser,
+        button.dataset.mfaResource
+      ));
+    });
+  });
+}
+
 function renderDashboard(data) {
   const { summary, devices } = data;
 
@@ -324,7 +387,21 @@ function renderDashboard(data) {
   updateText("#legend-step-up", summary.step_up);
   updateText("#active-device-count", `${devices.filter(device => device.last_seen > 0).length} thiết bị`);
   updateDonut(summary);
-  renderDeviceCards(devices);
+
+  // Dashboard nhận dữ liệu mới mỗi giây. Không dựng lại cả bảng nếu thiết bị
+  // chưa thay đổi, vì việc đó làm mất vị trí cuộn đang xem của người quản trị.
+  const nextSignature = JSON.stringify(devices);
+  if (nextSignature !== deviceViewSignature) {
+    const previousTable = document.querySelector("#device-list .device-table-wrap");
+    if (previousTable) deviceTableScrollLeft = previousTable.scrollLeft;
+
+    // Trong khi kéo thanh cuộn, tạm hoãn render để thao tác không bị giật
+    // hoặc tự quay về đầu do chu kỳ làm mới dữ liệu một giây.
+    if (Date.now() < deviceTableInteractionUntil) return;
+
+    renderDeviceCards(devices);
+    deviceViewSignature = nextSignature;
+  }
 }
 
 function setConnection(isOnline) {
@@ -359,6 +436,25 @@ async function refreshConnectionRequests() {
     renderConnectionRequests(data.requests ?? []);
   } catch {
     container.innerHTML = '<p class="empty-state">Không thể tải yêu cầu kết nối.</p>';
+  }
+}
+
+async function refreshMfaRequests() {
+  const container = document.querySelector("#mfa-request-list");
+  const loginButton = document.querySelector("#mfa-admin-login-button");
+  if (!adminToken) {
+    loginButton.hidden = false;
+    document.querySelector("#pending-mfa-request-count").textContent = "Chỉ admin";
+    container.innerHTML = '<p class="empty-state">Đăng nhập admin để xem và cấp mã MFA.</p>';
+    return;
+  }
+  loginButton.hidden = true;
+  try {
+    const response = await fetch("/api/mfa-requests", { headers: apiHeaders(), cache: "no-store" });
+    const data = await parseResponse(response);
+    renderMfaRequests(data.requests ?? []);
+  } catch (error) {
+    container.innerHTML = `<p class="empty-state">Không thể tải hàng chờ MFA: ${escapeHtml(error.message)}</p>`;
   }
 }
 
@@ -430,6 +526,21 @@ function apiHeaders() {
     "Authorization": `Bearer ${adminToken}`,
     "Content-Type": "application/json"
   };
+}
+
+function openMfaCodeDialog(challengeId, username, resourceId) {
+  selectedMfaChallengeId = challengeId;
+  const form = document.querySelector("#issue-mfa-code-form");
+  form.reset();
+  document.querySelector("#issue-mfa-code-context").textContent =
+    `Cấp mã cho ${username} khi truy cập ${resourceId}. Mã chỉ có hiệu lực 2 phút sau khi tạo.`;
+  document.querySelector("#issue-mfa-code-message").textContent = "";
+  showDialog("issue-mfa-code-dialog");
+}
+
+function validAdminMfaCode(code) {
+  return (code.match(/\d/g) ?? []).length >= 6 &&
+    /[A-Z]/.test(code) && /[^A-Za-z0-9]/.test(code);
 }
 
 async function loadAssignableUsers(selector) {
@@ -570,6 +681,10 @@ document.querySelector("#issue-enrollment-code-button").addEventListener("click"
   requireAdmin(() => openEnrollmentCodeDialog());
 });
 
+document.querySelector("#mfa-admin-login-button").addEventListener("click", () => {
+  requireAdmin(() => refreshMfaRequests());
+});
+
 document.querySelector("#weather-location-button").addEventListener("click", () => {
   loadWeatherForCurrentPosition();
 });
@@ -603,6 +718,7 @@ document.querySelector("#admin-login-form").addEventListener("submit", async eve
     sessionStorage.setItem("ztas_admin_token", adminToken);
     closeDialog("admin-login-dialog");
     refreshMacCaptureSettings();
+    refreshMfaRequests();
     const action = pendingAdminAction;
     pendingAdminAction = null;
     action?.();
@@ -679,6 +795,29 @@ document.querySelector("#issue-enrollment-code-form").addEventListener("submit",
       `Mã có hiệu lực đến ${formatTime(data.expires_at)}. Profile ${data.profile.label}, gán cho ${data.assigned_username}.`;
     closeDialog("issue-enrollment-code-dialog");
     showDialog("enrollment-code-result-dialog");
+  } catch (error) {
+    message.textContent = error.message;
+  }
+});
+
+document.querySelector("#issue-mfa-code-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const message = document.querySelector("#issue-mfa-code-message");
+  const code = form.elements.code.value.trim();
+  if (!validAdminMfaCode(code)) {
+    message.textContent = "Mã cần ít nhất 6 chữ số, 1 chữ hoa và 1 ký tự đặc biệt.";
+    return;
+  }
+  message.textContent = "Đang cấp mã…";
+  try {
+    const response = await fetch(`/api/mfa-requests/${encodeURIComponent(selectedMfaChallengeId)}/code`, {
+      method: "POST", headers: apiHeaders(), body: JSON.stringify({ code })
+    });
+    await parseResponse(response);
+    closeDialog("issue-mfa-code-dialog");
+    selectedMfaChallengeId = "";
+    refreshMfaRequests();
   } catch (error) {
     message.textContent = error.message;
   }
@@ -774,6 +913,7 @@ document.querySelector("#logout-button").addEventListener("click", async () => {
 
 refreshDashboard();
 refreshConnectionRequests();
+refreshMfaRequests();
 refreshMacCaptureSettings();
 updateLocalDateTime();
 loadWeatherForCurrentPosition();
@@ -781,5 +921,6 @@ setInterval(updateLocalDateTime, 1000);
 setInterval(() => {
   refreshDashboard();
   refreshConnectionRequests();
+  refreshMfaRequests();
   refreshMacCaptureSettings();
 }, 1000);

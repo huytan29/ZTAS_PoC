@@ -6,10 +6,9 @@
 #include <openssl/rand.h>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdint>
-#include <iomanip>
-#include <sstream>
 #include <utility>
 
 namespace {
@@ -38,21 +37,6 @@ std::string random_challenge_id() {
         return "";
     }
     return hex_encode(bytes, sizeof(bytes));
-}
-
-std::string random_otp() {
-    std::uint32_t value = 0;
-    if (RAND_bytes(
-            reinterpret_cast<unsigned char*>(&value),
-            sizeof(value)
-        ) != 1) {
-        return "";
-    }
-
-    std::ostringstream output;
-    output << std::setw(6) << std::setfill('0')
-           << (100000 + (value % 900000));
-    return output.str();
 }
 
 std::string fingerprint(
@@ -93,30 +77,34 @@ bool same_value(
 
 } // namespace
 
-MfaService::MfaService(
-    std::string signing_secret,
-    bool expose_demo_code
-) : signing_secret_(std::move(signing_secret)),
-    expose_demo_code_(expose_demo_code) {}
+MfaService::MfaService(std::string signing_secret)
+    : signing_secret_(std::move(signing_secret)) {}
 
 MfaChallenge MfaService::issue_challenge(
     const AccessSubject& subject,
-    int required_auth_level
+    int required_auth_level,
+    const std::string& device_id,
+    const std::string& resource_id
 ) {
     const int target_level = std::clamp(required_auth_level, 2, 5);
     const std::string challenge_id = random_challenge_id();
-    const std::string code = random_otp();
-    const long long expires_at = current_epoch() + 120;
+    const long long requested_at = current_epoch();
+    const long long expires_at = requested_at + 600;
 
-    if (challenge_id.empty() || code.empty()) {
-        return {"", target_level, 0, std::nullopt};
+    if (challenge_id.empty()) {
+        return {"", target_level, 0, false};
     }
 
     const StoredChallenge stored{
         subject.username,
+        subject.role,
+        device_id,
+        resource_id,
         target_level,
+        requested_at,
         expires_at,
-        fingerprint(challenge_id, subject.username, code, signing_secret_)
+        false,
+        ""
     };
 
     {
@@ -129,7 +117,78 @@ MfaChallenge MfaService::issue_challenge(
         challenge_id,
         target_level,
         expires_at,
-        expose_demo_code_ ? std::optional<std::string>(code) : std::nullopt
+        false
+    };
+}
+
+bool MfaService::valid_admin_code(const std::string& code) {
+    int digit_count = 0;
+    bool has_uppercase = false;
+    bool has_special = false;
+    for (const unsigned char character : code) {
+        digit_count += std::isdigit(character) ? 1 : 0;
+        has_uppercase = has_uppercase || std::isupper(character);
+        has_special = has_special || !std::isalnum(character);
+    }
+    return digit_count >= 6 && has_uppercase && has_special;
+}
+
+bool MfaService::issue_admin_code(
+    const std::string& challenge_id,
+    const std::string& code
+) {
+    if (!valid_admin_code(code)) return false;
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    const long long now = current_epoch();
+    remove_expired_locked(now);
+    const auto found = challenges_.find(challenge_id);
+    if (found == challenges_.end()) return false;
+
+    found->second.code_fingerprint = fingerprint(
+        challenge_id,
+        found->second.username,
+        code,
+        signing_secret_
+    );
+    found->second.code_ready = true;
+    found->second.expires_at = now + 120;
+    return true;
+}
+
+std::vector<MfaApprovalRequest> MfaService::list_requests() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    remove_expired_locked(current_epoch());
+    std::vector<MfaApprovalRequest> requests;
+    requests.reserve(challenges_.size());
+    for (const auto& [challenge_id, stored] : challenges_) {
+        requests.push_back({
+            challenge_id, stored.username, stored.role, stored.device_id,
+            stored.resource_id, stored.required_auth_level,
+            stored.requested_at, stored.expires_at, stored.code_ready
+        });
+    }
+    std::sort(requests.begin(), requests.end(), [](const auto& left, const auto& right) {
+        return left.requested_at > right.requested_at;
+    });
+    return requests;
+}
+
+std::optional<MfaApprovalRequest> MfaService::request_status(
+    const AccessSubject& subject,
+    const std::string& challenge_id
+) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    remove_expired_locked(current_epoch());
+    const auto found = challenges_.find(challenge_id);
+    if (found == challenges_.end() || found->second.username != subject.username) {
+        return std::nullopt;
+    }
+    const auto& stored = found->second;
+    return MfaApprovalRequest{
+        challenge_id, stored.username, stored.role, stored.device_id,
+        stored.resource_id, stored.required_auth_level,
+        stored.requested_at, stored.expires_at, stored.code_ready
     };
 }
 
@@ -145,7 +204,8 @@ std::optional<int> MfaService::verify_challenge(
     const auto found = challenges_.find(challenge_id);
     if (found == challenges_.end() ||
         found->second.username != subject.username ||
-        found->second.expires_at < now) {
+        found->second.expires_at < now ||
+        !found->second.code_ready) {
         return std::nullopt;
     }
 

@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/assets/common.css">
-  <link rel="stylesheet" href="/assets/dashboard.css?v=3">
+  <link rel="stylesheet" href="/assets/dashboard.css?v=7">
   <script defer src="/assets/common.js"></script>
-  <script defer src="/assets/dashboard.js?v=3"></script>
+  <script defer src="/assets/dashboard.js?v=7"></script>
 </head>
 <body>
   <header class="topbar">
@@ -97,6 +97,19 @@
       </div>
     </section>
 
+    <section class="connection-request-section">
+      <header class="section-heading">
+        <div>
+          <h2>Yêu cầu MFA chờ cấp mã</h2>
+          <p>Chỉ admin tạo mã xác thực cho yêu cầu đã vượt qua kiểm tra role, thiết bị và vùng mạng.</p>
+        </div>
+        <div class="section-heading__actions"><span class="pending-request-badge" id="pending-mfa-request-count">0 yêu cầu chờ</span><button class="button button--secondary" id="mfa-admin-login-button" type="button">Đăng nhập admin</button></div>
+      </header>
+      <div class="connection-request-table-wrap" id="mfa-request-list">
+        <p class="empty-state">Đăng nhập admin để xem hàng chờ MFA.</p>
+      </div>
+    </section>
+
     <section class="device-section">
       <header class="section-heading">
         <div>
@@ -159,6 +172,15 @@
       <div class="credential-actions"><button class="button button--secondary" id="copy-enrollment-code" type="button">Sao chép mã</button></div>
       <footer class="modal__footer"><button class="button button--primary" type="button" data-close-dialog="enrollment-code-result-dialog">Đã lưu mã</button></footer>
     </section>
+  </dialog>
+
+  <dialog class="modal" id="issue-mfa-code-dialog">
+    <form class="modal__card" id="issue-mfa-code-form">
+      <header class="modal__header"><div><h2>Cấp mã MFA theo yêu cầu</h2><p id="issue-mfa-code-context">Admin tự đặt mã và cung cấp qua kênh an toàn cho đúng người dùng.</p></div><button class="icon-button" type="button" data-close-dialog="issue-mfa-code-dialog">×</button></header>
+      <label class="form-field">Mã MFA<input name="code" type="text" autocomplete="off" placeholder="VD: PTIT!123456" required><small>Phải có ít nhất 6 chữ số, 1 chữ hoa và 1 ký tự đặc biệt.</small></label>
+      <p class="form-message" id="issue-mfa-code-message"></p>
+      <footer class="modal__footer"><button class="button button--secondary" type="button" data-close-dialog="issue-mfa-code-dialog">Hủy</button><button class="button button--primary" type="submit">Cấp mã cho yêu cầu</button></footer>
+    </form>
   </dialog>
 
   <dialog class="modal" id="device-key-dialog">

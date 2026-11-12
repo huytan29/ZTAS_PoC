@@ -26,6 +26,15 @@
       "password_hash": "pbkdf2_sha256$200000$a0866a39b5a33e9bc7d3a00256e4f915$ad251842d73566cc9c66df167f283960fdb471441594f48457819d22543c5097",
       "role": "employee",
       "username": "ubuntu1"
+    },
+    {
+      "allowed_device_ids": [
+        "windows-laptop-01"
+      ],
+      "expires_at": 0,
+      "password_hash": "pbkdf2_sha256$200000$73fbf0e046e3f9acf1cf01e86b0f04bf$77f9083239fb72a6978f107128e0d7973ee156d03faa573ee934fe3ae699bf31",
+      "role": "engineer",
+      "username": "windows1"
     }
   ]
 }
