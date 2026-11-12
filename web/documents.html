@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="/assets/common.css">
   <link rel="stylesheet" href="/assets/documents.css">
   <script defer src="/assets/common.js"></script>
-  <script defer src="/assets/documents.js"></script>
+  <script defer src="/assets/documents.js?v=13"></script>
 </head>
 <body>
   <header class="topbar">
@@ -43,14 +43,14 @@
         <div class="document-levels" id="document-levels" aria-label="Các mức tài liệu">
           <button class="document-card document-card--public" data-zone="public" type="button"><span>Cấp 1</span><strong>Công khai</strong><small>Guest trở lên</small></button>
           <button class="document-card document-card--internal" data-zone="internal" type="button"><span>Cấp 2</span><strong>Nội bộ</strong><small>Employee trở lên</small></button>
-          <button class="document-card document-card--confidential" data-zone="confidential" type="button"><span>Cấp 3</span><strong>Mật / nhạy cảm</strong><small>Manager trở lên · MFA 2</small></button>
+          <button class="document-card document-card--confidential" data-zone="confidential" type="button"><span>Cấp 3</span><strong>Mật / nhạy cảm</strong><small>Manager trở lên</small></button>
           <button class="document-card document-card--secret" data-zone="secret" type="button"><span>Cấp 4</span><strong>Bí mật</strong><small>Engineer trở lên · MFA 3</small></button>
           <button class="document-card document-card--restricted" data-zone="restricted" type="button"><span>Cấp 5</span><strong>Hạn chế đặc biệt</strong><small>Admin · MFA 5</small></button>
         </div>
 
         <section class="panel viewer-panel" aria-live="polite">
           <header class="viewer-panel__header"><div><p class="page-kicker">Kết quả truy cập</p><h2 id="viewer-title">Chọn mức tài liệu để đọc</h2></div><span class="decision-badge" id="decision-badge">CHỜ</span></header>
-          <div class="viewer-content" id="viewer-content"><p>Hệ thống chỉ hiển thị nội dung khi policy trả về <strong>PERMIT</strong>. Hãy đăng nhập, sau đó chọn một phân vùng tài liệu.</p></div>
+          <div class="viewer-content" id="viewer-content"><p>Chọn một phân vùng để xem các tệp được cấp quyền, sau đó bấm tên tệp để mở cửa sổ đọc.</p></div>
         </section>
 
         <section class="panel custom-document-panel">
@@ -60,5 +60,15 @@
       </section>
     </section>
   </main>
+
+  <dialog class="document-reader-dialog" id="document-reader-dialog" aria-labelledby="document-reader-title">
+    <article class="document-reader-dialog__card">
+      <header class="document-reader-dialog__header">
+        <div><p class="page-kicker">Đọc tài liệu được cấp quyền</p><h2 id="document-reader-title">Tài liệu</h2></div>
+        <button class="document-reader-dialog__close" id="document-reader-close" type="button" aria-label="Đóng cửa sổ đọc">×</button>
+      </header>
+      <div class="document-reader-dialog__content" id="document-reader-dialog-content"></div>
+    </article>
+  </dialog>
 </body>
 </html>

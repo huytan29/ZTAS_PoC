@@ -19,7 +19,7 @@
       "min_role_level": 3,
       "min_device_trust": 3,
       "min_location_level": 2,
-      "min_auth_level": 2
+      "min_auth_level": 1
     },
     "secret_document": {
       "level": 4,

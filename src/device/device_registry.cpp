@@ -180,6 +180,26 @@ bool DeviceRegistry::verify_source_ip(
     return false;
 }
 
+bool DeviceRegistry::is_active_registered(const std::string& device_id) const {
+    if (device_id.empty()) return false;
+
+    try {
+        std::ifstream policy_file(devices_policy_file_);
+        const json policy = json::parse(policy_file);
+        const auto& device = policy.at("devices").at(device_id);
+        if (!device.value("registered", false) ||
+            device.value("lifecycle_status", "ACTIVE") != "ACTIVE") {
+            return false;
+        }
+
+        std::ifstream credentials_file(credentials_file_);
+        const json credentials = json::parse(credentials_file);
+        return credentials.at("devices").at(device_id).value("active", false);
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
 std::optional<ReaderDeviceContext> DeviceRegistry::resolve_reader_context(
     const std::vector<std::string>& allowed_device_ids,
     const std::string& source_ip

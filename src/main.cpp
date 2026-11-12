@@ -580,7 +580,11 @@ void handle_document_request(
     const AccessDecision decision =
         access_service.authorize(access_request);
 
-    if (decision.reason_code == "DEVICE_NOT_REGISTERED") {
+    // OPA tren Docker Desktop Windows co the cap nhat file policy cham hon
+    // dich vu chinh. Mot thiet bi da duoc cap phat khong duoc quay lai hang
+    // cho chi vi OPA chua nap xong ban ghi moi.
+    if (decision.reason_code == "DEVICE_NOT_REGISTERED" &&
+        !device_registry.is_active_registered(device_id)) {
         const DiscoveryResult discovery = discovery_service.record_attempt(
             device_id,
             request.get_header_value("X-Location-ID"),
@@ -1917,6 +1921,7 @@ int main() {
         &auth_service,
         &enrollment_code_service,
         &discovery_service,
+        &device_registry,
         &device_security_settings,
         &audit_logger
     ](
@@ -1931,6 +1936,19 @@ int main() {
                 send_json(response, 400, {
                     {"error", "MISSING_DEVICE_ID"},
                     {"message", "Can gui device_id de yeu cau ket noi"}
+                });
+                return;
+            }
+
+            // Yeu cau ket noi la thao tac mot lan. Sau khi admin da cap
+            // Device Key, client co the goi lai endpoint nay do retry/auto
+            // start nhung khong duoc sinh them yeu cau cho phan duyet.
+            if (device_registry.is_active_registered(device_id)) {
+                discovery_service.resolve(device_id);
+                send_json(response, 200, {
+                    {"status", "ALREADY_APPROVED"},
+                    {"device_id", device_id},
+                    {"message", "Thiet bi da duoc cap phat; khong can gui lai yeu cau ket noi"}
                 });
                 return;
             }
@@ -2469,9 +2487,12 @@ int main() {
 
             const std::string source_ip = request.remote_addr.empty()
                 ? "unknown" : request.remote_addr;
-            const auto context = device_registry.resolve_reader_context(
+            auto context = device_registry.resolve_reader_context(
                 subject->allowed_device_ids, source_ip
             );
+            if (!context.has_value() && subject->role == "admin") {
+                context = ReaderDeviceContext{"admin-console", "secure-zone"};
+            }
             if (!context.has_value()) {
                 audit_logger.write({
                     {"event_type", "READER_LOGIN_DENY"},
@@ -2528,9 +2549,12 @@ int main() {
 
         const std::string source_ip = request.remote_addr.empty()
             ? "unknown" : request.remote_addr;
-        const auto context = device_registry.resolve_reader_context(
+        auto context = device_registry.resolve_reader_context(
             subject->allowed_device_ids, source_ip
         );
+        if (!context.has_value() && subject->role == "admin") {
+            context = ReaderDeviceContext{"admin-console", "secure-zone"};
+        }
         if (!context.has_value()) {
             send_json(response, 403, {
                 {"error", "READER_DEVICE_CONTEXT_NOT_FOUND"},

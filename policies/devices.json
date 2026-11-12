@@ -1,5 +1,14 @@
 {
   "devices": {
+    "admin-console": {
+      "allowed_ip_addresses": [],
+      "device_name": "Admin Console",
+      "device_type": "system-console",
+      "lifecycle_status": "ACTIVE",
+      "location_id": "secure-zone",
+      "registered": true,
+      "trust_level": 5
+    },
     "guest-laptop-01": {
       "location_id": "external-network",
       "registered": false,
@@ -9,6 +18,42 @@
       "location_id": "lab-network",
       "registered": false,
       "trust_level": 4
+    },
+    "ubuntu-test-1": {
+      "allowed_ip_addresses": [
+        "192.168.40.132"
+      ],
+      "device_name": "Ubuntu VWare",
+      "device_type": "ubuntu",
+      "enrollment_profile": "managed-vm",
+      "lifecycle_status": "REVOKED",
+      "location_id": "lab-network",
+      "registered": false,
+      "trust_level": 3
+    },
+    "ubuntu-vm-01": {
+      "allowed_ip_addresses": [
+        "192.168.2.1"
+      ],
+      "device_name": "Ubuntu VM 01",
+      "device_type": "ubuntu",
+      "enrollment_profile": "managed-vm",
+      "lifecycle_status": "ACTIVE",
+      "location_id": "lab-network",
+      "registered": true,
+      "trust_level": 3
+    },
+    "ubuntu-vm-02": {
+      "allowed_ip_addresses": [
+        "192.168.2.1"
+      ],
+      "device_name": "ubuntu-vm-02",
+      "device_type": "ubuntu",
+      "enrollment_profile": "managed-vm",
+      "lifecycle_status": "ACTIVE",
+      "location_id": "lab-network",
+      "registered": true,
+      "trust_level": 3
     }
   }
 }

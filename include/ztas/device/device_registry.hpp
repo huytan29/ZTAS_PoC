@@ -30,6 +30,11 @@ public:
         const std::string& source_ip
     ) const;
 
+    // Cho phep dich vu phat hien bo qua mot yeu cau da duoc cap phat. Kiem
+    // tra dong thoi policy thiet bi va credential dang hoat dong, khong chi
+    // dua vao Device ID do client tu khai bao.
+    bool is_active_registered(const std::string& device_id) const;
+
     std::optional<ReaderDeviceContext> resolve_reader_context(
         const std::vector<std::string>& allowed_device_ids,
         const std::string& source_ip

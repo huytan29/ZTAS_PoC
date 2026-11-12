@@ -4,6 +4,9 @@ const viewerTitle = document.querySelector("#viewer-title");
 const viewerContent = document.querySelector("#viewer-content");
 const decisionBadge = document.querySelector("#decision-badge");
 const accountNote = document.querySelector("#reader-account-note");
+const readerDialog = document.querySelector("#document-reader-dialog");
+const readerDialogTitle = document.querySelector("#document-reader-title");
+const readerDialogContent = document.querySelector("#document-reader-dialog-content");
 
 let token = sessionStorage.getItem("ztas_document_token") || "";
 let context = JSON.parse(sessionStorage.getItem("ztas_document_context") || "null");
@@ -26,6 +29,12 @@ function setDecision(effect, text) {
   if (effect === "DENY") decisionBadge.classList.add("decision-badge--deny");
   if (effect === "STEP_UP") decisionBadge.classList.add("decision-badge--step");
   decisionBadge.textContent = text || effect || "CHỜ";
+}
+
+function openReaderDialog(title, content) {
+  readerDialogTitle.textContent = title;
+  readerDialogContent.innerHTML = content;
+  if (!readerDialog.open) readerDialog.showModal();
 }
 
 function updateSession() {
@@ -90,6 +99,9 @@ async function loadStoredDocuments(zone) {
     const response = await fetch(`/api/document-files/${encodeURIComponent(zone)}`, { headers: requestHeaders() });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.reason_code || data.error || "Không thể tải danh sách tệp");
+    viewerTitle.textContent = `Tệp trong vùng ${labels[zone]}`;
+    viewerContent.innerHTML = "<p>Đã được cấp quyền. Chọn một tệp bên dưới để mở cửa sổ đọc.</p>";
+    setDecision("PERMIT", "ĐƯỢC PHÉP");
     if (!data.files?.length) {
       list.innerHTML = "<p>Phân vùng này chưa có tệp do quản trị viên nạp.</p>";
       return;
@@ -100,6 +112,9 @@ async function loadStoredDocuments(zone) {
       openDocument(`/documents/${encodeURIComponent(zone)}/${encodeURIComponent(filename)}`, filename);
     }));
   } catch (error) {
+    viewerTitle.textContent = `Tài liệu ${labels[zone] || "được bảo vệ"}`;
+    viewerContent.innerHTML = `<div class="document-message document-message--deny"><strong>Không thể mở phân vùng</strong><span>${escapeHtml(error.message)}</span></div>`;
+    setDecision("DENY", "TỪ CHỐI");
     list.innerHTML = `<p>Không thể hiển thị danh sách: ${escapeHtml(error.message)}</p>`;
   }
 }
@@ -125,18 +140,26 @@ async function openDocument(url, title, zone = "") {
     setDecision("PERMIT", "ĐƯỢC PHÉP");
     if (parsed.kind === "json") {
       viewerTitle.textContent = parsed.value.title || title;
-      viewerContent.innerHTML = `<article class="document-text">${escapeHtml(parsed.value.content || "Tài liệu không có nội dung.")}</article>`;
+      const content = `<article class="document-text">${escapeHtml(parsed.value.content || "Tài liệu không có nội dung.")}</article>`;
+      viewerContent.innerHTML = `<p>Tài liệu đang được mở trong cửa sổ đọc.</p>`;
+      openReaderDialog(parsed.value.title || title, content);
       if (zone) loadStoredDocuments(zone);
       return;
     }
     const objectUrl = URL.createObjectURL(parsed.value);
     if (parsed.contentType.includes("pdf") || parsed.contentType.startsWith("image/")) {
       const tag = parsed.contentType.includes("pdf") ? "iframe" : "img";
-      viewerContent.innerHTML = `<${tag} class="document-preview" src="${objectUrl}" title="${escapeHtml(title)}"></${tag}><a class="document-download" href="${objectUrl}" download> Tải tệp đã được cấp quyền</a>`;
+      const content = `<${tag} class="document-preview" src="${objectUrl}" title="${escapeHtml(title)}"></${tag}><a class="document-download" href="${objectUrl}" download> Tải tệp đã được cấp quyền</a>`;
+      viewerContent.innerHTML = "<p>Tài liệu đang được mở trong cửa sổ đọc.</p>";
+      openReaderDialog(title, content);
     } else if (parsed.contentType.startsWith("text/")) {
-      viewerContent.innerHTML = `<article class="document-text">${escapeHtml(await parsed.value.text())}</article>`;
+      const content = `<article class="document-text">${escapeHtml(await parsed.value.text())}</article>`;
+      viewerContent.innerHTML = "<p>Tài liệu đang được mở trong cửa sổ đọc.</p>";
+      openReaderDialog(title, content);
     } else {
-      viewerContent.innerHTML = `<div class="document-message"><strong>Tệp đã được cấp quyền.</strong><a class="document-download" href="${objectUrl}" download>Tải tệp về</a></div>`;
+      const content = `<div class="document-message"><strong>Tệp đã được cấp quyền.</strong><a class="document-download" href="${objectUrl}" download>Tải tệp về</a></div>`;
+      viewerContent.innerHTML = "<p>Tệp đang được mở trong cửa sổ đọc.</p>";
+      openReaderDialog(title, content);
     }
   } catch (error) {
     setDecision("DENY", "KHÔNG THỂ ĐỌC");
@@ -146,8 +169,12 @@ async function openDocument(url, title, zone = "") {
 
 document.querySelectorAll("[data-zone]").forEach(button => button.addEventListener("click", () => {
   const zone = button.dataset.zone;
-  openDocument(`/documents/${zone}`, `Tài liệu ${labels[zone]}`, zone);
+  // Chọn cấp chỉ kiểm tra policy và tải danh sách tệp. Cửa sổ đọc nổi chỉ
+  // xuất hiện khi người dùng bấm vào một tệp cụ thể trong danh sách.
+  loadStoredDocuments(zone);
 }));
+
+document.querySelector("#document-reader-close").addEventListener("click", () => readerDialog.close());
 
 document.querySelector("#logout-button").addEventListener("click", async () => {
   sessionStorage.removeItem("ztas_document_token");
