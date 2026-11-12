@@ -19,6 +19,11 @@ public:
         const AccessRequest& request
     ) const;
 
+    // Docker Desktop tren Windows khong luon phat hien thay doi bind mount
+    // ngay lap tuc. Day ban ghi devices moi vao OPA qua Data API sau moi
+    // thao tac cap phat/thu hoi de policy khong dung du lieu cu.
+    bool sync_devices_policy(const std::string& devices_policy_file) const;
+
 private:
     std::string opa_host_;
 };

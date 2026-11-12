@@ -35,19 +35,7 @@
       "allowed_ip_addresses": [
         "192.168.2.1"
       ],
-      "device_name": "Ubuntu VM 01",
-      "device_type": "ubuntu",
-      "enrollment_profile": "managed-vm",
-      "lifecycle_status": "ACTIVE",
-      "location_id": "lab-network",
-      "registered": true,
-      "trust_level": 3
-    },
-    "ubuntu-vm-02": {
-      "allowed_ip_addresses": [
-        "192.168.2.1"
-      ],
-      "device_name": "ubuntu-vm-02",
+      "device_name": "Ubuntu VM 03",
       "device_type": "ubuntu",
       "enrollment_profile": "managed-vm",
       "lifecycle_status": "ACTIVE",

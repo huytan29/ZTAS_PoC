@@ -81,8 +81,10 @@ location_matches_device if {
 }
 
 role_sufficient if {
-    data.roles[input.subject.role].level >=
-        data.resources[input.resource.id].min_role_level
+    # Ma tran quyen explicit: cap cao bao gom cap hien tai va moi cap thap
+    # hon. Vi du manager (cap 3) doc duoc tai lieu cap 1, 2 va 3.
+    resource_level := data.resources[input.resource.id].level
+    data.roles[input.subject.role].document_levels[_] == resource_level
 }
 
 device_sufficient if {

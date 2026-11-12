@@ -3,10 +3,35 @@
 #include <httplib.h>
 #include <nlohmann/json.hpp>
 
+#include <fstream>
 #include <utility>
 
 PolicyClient::PolicyClient(std::string opa_host)
     : opa_host_(std::move(opa_host)) {}
+
+bool PolicyClient::sync_devices_policy(
+    const std::string& devices_policy_file
+) const {
+    try {
+        std::ifstream file(devices_policy_file);
+        const nlohmann::json policy = nlohmann::json::parse(file);
+        if (!policy.contains("devices") || !policy.at("devices").is_object()) {
+            return false;
+        }
+
+        httplib::Client client(opa_host_, 8181);
+        client.set_connection_timeout(2, 0);
+        client.set_read_timeout(3, 0);
+        const auto response = client.Put(
+            "/v1/data/devices",
+            policy.at("devices").dump(),
+            "application/json"
+        );
+        return response && response->status >= 200 && response->status < 300;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
 
 std::optional<AccessDecision> PolicyClient::decide(
     const AccessRequest& request

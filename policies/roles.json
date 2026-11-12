@@ -1,9 +1,24 @@
 {
   "roles": {
-    "guest": { "level": 1 },
-    "employee": { "level": 2 },
-    "manager": { "level": 3 },
-    "engineer": { "level": 4 },
-    "admin": { "level": 5 }
+    "guest": {
+      "level": 1,
+      "document_levels": [1]
+    },
+    "employee": {
+      "level": 2,
+      "document_levels": [1, 2]
+    },
+    "manager": {
+      "level": 3,
+      "document_levels": [1, 2, 3]
+    },
+    "engineer": {
+      "level": 4,
+      "document_levels": [1, 2, 3, 4]
+    },
+    "admin": {
+      "level": 5,
+      "document_levels": [1, 2, 3, 4, 5]
+    }
   }
 }

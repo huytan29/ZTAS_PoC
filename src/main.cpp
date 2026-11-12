@@ -2087,6 +2087,8 @@ int main() {
         &device_management_service,
         &discovery_service,
         &device_security_settings,
+        &policy_client,
+        &devices_policy_file,
         &audit_logger
     ](
         const httplib::Request& request,
@@ -2143,6 +2145,9 @@ int main() {
                 return;
             }
 
+            const bool policy_synced =
+                policy_client.sync_devices_policy(devices_policy_file);
+
             audit_logger.write({
                 {"event_type", result.code},
                 {"actor", admin->username},
@@ -2152,8 +2157,17 @@ int main() {
                 {"allowed_ip_address", source_ip},
                 {"mac_captured", !declared_mac.empty()},
                 {"reason_code", result.code},
+                {"policy_synced", policy_synced},
                 {"severity", "info"}
             });
+            if (!policy_synced) {
+                audit_logger.write({
+                    {"event_type", "OPA_DEVICE_POLICY_SYNC_FAILED"},
+                    {"actor", admin->username},
+                    {"device_id", result.device_id},
+                    {"severity", "high"}
+                });
+            }
 
             // Chi xoa hang cho khi cap phat hoan tat. Neu co loi, admin van
             // thay yeu cau de sua phan loai va thu lai.
@@ -2183,6 +2197,7 @@ int main() {
                     {"enrollment_profile", result.enrollment_profile}
                 }},
                 {"pending_request_resolved", request_resolved},
+                {"policy_synced", policy_synced},
                 // Chi tra ve key tai thoi diem cap phat. Audit va policy khong luu key dang ro.
                 {"device_key", result.device_key}
             });
@@ -2196,6 +2211,8 @@ int main() {
     server.Delete("/api/devices", [
         &auth_service,
         &device_management_service,
+        &policy_client,
+        &devices_policy_file,
         &audit_logger
     ](
         const httplib::Request& request,
@@ -2228,6 +2245,9 @@ int main() {
             return;
         }
 
+        const bool policy_synced =
+            policy_client.sync_devices_policy(devices_policy_file);
+
         audit_logger.write({
             {"event_type", "DEVICE_REVOKED"},
             {"actor", admin->username},
@@ -2235,6 +2255,7 @@ int main() {
             {"trust_level", result.trust_level},
             {"location_id", result.location_id},
             {"reason_code", "DEVICE_REVOKED"},
+            {"policy_synced", policy_synced},
             {"severity", "high"}
         });
 
@@ -2247,6 +2268,8 @@ int main() {
     server.Put("/api/devices/network-identity", [
         &auth_service,
         &device_management_service,
+        &policy_client,
+        &devices_policy_file,
         &audit_logger
     ](
         const httplib::Request& request,
@@ -2276,11 +2299,14 @@ int main() {
                 });
                 return;
             }
+            const bool policy_synced =
+                policy_client.sync_devices_policy(devices_policy_file);
             audit_logger.write({
                 {"event_type", "DEVICE_IP_UPDATED"},
                 {"actor", admin->username},
                 {"device_id", result.device_id},
                 {"allowed_ip_address", source_ip},
+                {"policy_synced", policy_synced},
                 {"severity", "high"}
             });
             send_json(response, 200, {
@@ -2296,6 +2322,8 @@ int main() {
     server.Post("/api/devices/block", [
         &auth_service,
         &device_management_service,
+        &policy_client,
+        &devices_policy_file,
         &audit_logger
     ](
         const httplib::Request& request,
@@ -2318,6 +2346,8 @@ int main() {
                 });
                 return;
             }
+            const bool policy_synced =
+                policy_client.sync_devices_policy(devices_policy_file);
             audit_logger.write({
                 {"event_type", "DEVICE_BLOCKED"},
                 {"actor", admin->username},
@@ -2325,6 +2355,7 @@ int main() {
                 {"trust_level", result.trust_level},
                 {"location_id", result.location_id},
                 {"reason_code", "DEVICE_BLOCKED_BY_ADMIN"},
+                {"policy_synced", policy_synced},
                 {"severity", "critical"}
             });
             send_json(response, 200, {
@@ -2339,6 +2370,8 @@ int main() {
     server.Delete("/api/devices/permanent", [
         &auth_service,
         &device_management_service,
+        &policy_client,
+        &devices_policy_file,
         &audit_logger
     ](
         const httplib::Request& request,
@@ -2371,6 +2404,9 @@ int main() {
             return;
         }
 
+        const bool policy_synced =
+            policy_client.sync_devices_policy(devices_policy_file);
+
         // Chi xoa cau hinh thiet bi; audit log phai luon duoc giu lai.
         audit_logger.write({
             {"event_type", "DEVICE_DELETED"},
@@ -2379,6 +2415,7 @@ int main() {
             {"trust_level", result.trust_level},
             {"location_id", result.location_id},
             {"reason_code", "DEVICE_DELETED"},
+            {"policy_synced", policy_synced},
             {"severity", "high"}
         });
 

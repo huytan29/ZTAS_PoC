@@ -2,9 +2,7 @@
   "users": [
     {
       "allowed_device_ids": [
-        "macbook-lab-01",
-        "ubuntu-test-1",
-        "ubuntu-vm-01"
+        "macbook-lab-01"
       ],
       "expires_at": 0,
       "password_hash": "DAN_HASH_MANAGER_VAO_DAY",
@@ -25,18 +23,9 @@
         "ubuntu-vm-01"
       ],
       "expires_at": 0,
-      "password_hash": "pbkdf2_sha256$200000$ca707981f2cab63707bfc8b0563ac5db$aea3576c406fb3c787c48ba017608539bd9c10acc91c34aa9945b6528ece93d3",
-      "role": "manager",
-      "username": "ubuntu-manager"
-    },
-    {
-      "allowed_device_ids": [
-        "ubuntu-vm-02"
-      ],
-      "expires_at": 0,
-      "password_hash": "pbkdf2_sha256$200000$8fe0e0e4b1963866541d38dcf704a3ac$0a10ed509af760661f51ba1e9382b672480e3c4d8899c77257411ec1d5b1ad0a",
-      "role": "manager",
-      "username": "ubuntu2-manager"
+      "password_hash": "pbkdf2_sha256$200000$a0866a39b5a33e9bc7d3a00256e4f915$ad251842d73566cc9c66df167f283960fdb471441594f48457819d22543c5097",
+      "role": "employee",
+      "username": "ubuntu1"
     }
   ]
 }

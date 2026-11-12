@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/assets/common.css">
-  <link rel="stylesheet" href="/assets/dashboard.css">
+  <link rel="stylesheet" href="/assets/dashboard.css?v=3">
   <script defer src="/assets/common.js"></script>
-  <script defer src="/assets/dashboard.js"></script>
+  <script defer src="/assets/dashboard.js?v=3"></script>
 </head>
 <body>
   <header class="topbar">
@@ -36,11 +36,33 @@
             <time class="weather-card__time" id="local-date-time">Đang cập nhật giờ…</time>
             <span class="weather-card__zone" id="local-time-zone">Vùng giờ đang tải…</span>
             <strong class="weather-card__condition" id="weather-condition">Thời tiết chưa được lấy</strong>
-            <span class="weather-card__location" id="weather-location">Chọn vị trí để xem thời tiết hiện tại</span>
+            <span class="weather-card__location" id="weather-location">Đang tự xác định vị trí…</span>
           </div>
-          <button class="weather-card__button" id="weather-location-button" type="button">Dùng vị trí</button>
+          <button class="weather-card__button" id="weather-location-button" type="button">Làm mới</button>
         </aside>
       </div>
+    </section>
+
+    <section class="dashboard-overview">
+      <article class="panel">
+        <header class="panel__header">
+          <h2>Trạng thái hoạt động</h2>
+          <p>Dịch vụ cốt lõi của mô hình PoC</p>
+        </header>
+        <div class="service-list">
+          <div class="service-list__row"><span>ZTAS Authorization Service</span><strong class="text-success" id="ztas-state">Đang kiểm tra</strong></div>
+          <div class="service-list__row"><span>Policy Engine</span><strong>OPA qua Docker</strong></div>
+          <div class="service-list__row"><span>Thiết bị có hoạt động</span><strong id="active-device-count">0 thiết bị</strong></div>
+          <div class="service-list__row service-list__row--security"><span><strong>Thu thập MAC đặc biệt</strong><small>Chỉ nhận MAC do thiết bị tự khai báo; mặc định tắt.</small></span><label class="switch-control" title="Chỉ quản trị viên được thay đổi"><input id="mac-capture-toggle" type="checkbox"><span class="switch-control__track" aria-hidden="true"></span><span id="mac-capture-state">Chỉ admin</span></label></div>
+        </div>
+      </article>
+      <article class="panel">
+        <header class="panel__header"><h2>Phân loại thiết bị</h2><p>Ba trạng thái cấp một</p></header>
+        <div class="chart-panel">
+          <div class="donut-chart" id="device-donut"><div class="donut-chart__center"><strong id="donut-total">0</strong><span>thiết bị</span></div></div>
+          <div class="chart-legend"><div><span><i class="status-dot status-dot--success"></i>Đã xác định</span><b id="legend-identified">0</b></div><div><span><i class="status-dot status-dot--danger"></i>Chưa xác định</span><b id="legend-unidentified">0</b></div><div><span><i class="status-dot status-dot--warning"></i>Cần xác thực thêm</span><b id="legend-step-up">0</b></div></div>
+        </div>
+      </article>
     </section>
 
     <section class="metric-grid" aria-label="Tổng quan thiết bị">
@@ -60,70 +82,6 @@
         <span class="metric-card__label">Cần xác thực thêm</span>
         <strong class="metric-card__value" id="step-up-devices">0</strong>
       </article>
-    </section>
-
-    <section class="dashboard-overview">
-      <article class="panel">
-        <header class="panel__header">
-          <h2>Trạng thái hoạt động</h2>
-          <p>Dịch vụ cốt lõi của mô hình PoC</p>
-        </header>
-        <div class="service-list">
-          <div class="service-list__row">
-            <span>ZTAS Authorization Service</span>
-            <strong class="text-success" id="ztas-state">Đang kiểm tra</strong>
-          </div>
-          <div class="service-list__row">
-            <span>Policy Engine</span>
-            <strong>OPA qua Docker</strong>
-          </div>
-          <div class="service-list__row">
-            <span>Thiết bị có hoạt động</span>
-            <strong id="active-device-count">0 thiết bị</strong>
-          </div>
-          <div class="service-list__row service-list__row--security">
-            <span><strong>Thu thập MAC đặc biệt</strong><small>Chỉ nhận MAC do thiết bị tự khai báo; mặc định tắt.</small></span>
-            <label class="switch-control" title="Chỉ quản trị viên được thay đổi">
-              <input id="mac-capture-toggle" type="checkbox">
-              <span class="switch-control__track" aria-hidden="true"></span>
-              <span id="mac-capture-state">Chỉ admin</span>
-            </label>
-          </div>
-        </div>
-      </article>
-
-      <article class="panel">
-        <header class="panel__header">
-          <h2>Phân loại thiết bị</h2>
-          <p>Ba trạng thái cấp một</p>
-        </header>
-        <div class="chart-panel">
-          <div class="donut-chart" id="device-donut">
-            <div class="donut-chart__center">
-              <strong id="donut-total">0</strong>
-              <span>thiết bị</span>
-            </div>
-          </div>
-          <div class="chart-legend">
-            <div><span><i class="status-dot status-dot--success"></i>Đã xác định</span><b id="legend-identified">0</b></div>
-            <div><span><i class="status-dot status-dot--danger"></i>Chưa xác định</span><b id="legend-unidentified">0</b></div>
-            <div><span><i class="status-dot status-dot--warning"></i>Cần xác thực thêm</span><b id="legend-step-up">0</b></div>
-          </div>
-        </div>
-      </article>
-    </section>
-
-    <section class="data-zone-section">
-      <header class="section-heading">
-        <div>
-          <h2>Khu dữ liệu được bảo vệ</h2>
-          <p>Đặt tệp của bạn vào đúng thư mục phân vùng. ZTAS và OPA luôn kiểm tra trước khi tải tệp.</p>
-        </div>
-        <div class="section-heading__actions"><span class="database-badge">Tệp · phân vùng Zero Trust</span><button class="button button--primary" id="upload-document-button" type="button">Tải tài liệu lên</button></div>
-      </header>
-      <div class="data-zone-table-wrap" id="data-zone-list">
-        <p class="empty-state">Đang tải cấu trúc vùng dữ liệu…</p>
-      </div>
     </section>
 
     <section class="connection-request-section">
@@ -154,6 +112,7 @@
         <p class="empty-state">Đang tải danh sách thiết bị…</p>
       </div>
     </section>
+
   </main>
 
   <dialog class="modal" id="admin-login-dialog">
@@ -200,16 +159,6 @@
       <div class="credential-actions"><button class="button button--secondary" id="copy-enrollment-code" type="button">Sao chép mã</button></div>
       <footer class="modal__footer"><button class="button button--primary" type="button" data-close-dialog="enrollment-code-result-dialog">Đã lưu mã</button></footer>
     </section>
-  </dialog>
-
-  <dialog class="modal" id="upload-document-dialog">
-    <form class="modal__card" id="upload-document-form" enctype="multipart/form-data">
-      <header class="modal__header"><div><h2>Tải tài liệu vào phân vùng</h2><p>Chỉ admin có thể nạp tệp. Quyền đọc tệp được xác định bởi phân vùng Zero Trust đã chọn.</p></div><button class="icon-button" type="button" data-close-dialog="upload-document-dialog">×</button></header>
-      <label class="form-field">Phân vùng dữ liệu<select name="zone_id" required><option value="public">public — công khai</option><option value="internal">internal — nội bộ</option><option value="confidential">confidential — mật</option><option value="secret">secret — bí mật</option><option value="restricted">restricted — hạn chế đặc biệt</option></select></label>
-      <label class="form-field">Tệp tài liệu<input name="document" type="file" required><small>Tối đa 25 MB. Chọn cùng tên sẽ thay thế tệp cũ trong chính phân vùng đó.</small></label>
-      <p class="form-message" id="upload-document-message"></p>
-      <footer class="modal__footer"><button class="button button--secondary" type="button" data-close-dialog="upload-document-dialog">Hủy</button><button class="button button--primary" type="submit">Tải lên</button></footer>
-    </form>
   </dialog>
 
   <dialog class="modal" id="device-key-dialog">

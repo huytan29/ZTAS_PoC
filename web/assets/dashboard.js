@@ -31,12 +31,13 @@ let deviceToDelete = null;
 let issuedCredential = null;
 let issuedEnrollmentCode = "";
 let assignableUsers = [];
+let weatherLoading = false;
 
 const weatherArt = {
-  clear: '<svg viewBox="0 0 48 48" role="img"><circle cx="24" cy="24" r="10" fill="#f6b73c"/><g stroke="#f6b73c" stroke-width="3" stroke-linecap="round"><path d="M24 4v5M24 39v5M4 24h5M39 24h5M10 10l4 4M34 34l4 4M38 10l-4 4M14 34l-4 4"/></g></svg>',
-  cloudy: '<svg viewBox="0 0 48 48" role="img"><circle cx="18" cy="16" r="7" fill="#f6c453"/><path d="M14 37h23a8 8 0 0 0 0-16 11 11 0 0 0-21-2 9 9 0 0 0-2 18Z" fill="#9eafc4"/></svg>',
-  rain: '<svg viewBox="0 0 48 48" role="img"><path d="M10 29h27a8 8 0 0 0 0-16 11 11 0 0 0-21-2 9 9 0 0 0-6 18Z" fill="#879db7"/><g stroke="#4b8fe2" stroke-width="3" stroke-linecap="round"><path d="m16 34-2 6m10-6-2 6m10-6-2 6"/></g></svg>',
-  calm: '<svg viewBox="0 0 48 48" role="img"><path d="M10 30h27a8 8 0 0 0 0-16 11 11 0 0 0-21-2 9 9 0 0 0-6 18Z" fill="#a9b6c6"/><path d="M12 38h17m-10 4h17" stroke="#8696a9" stroke-width="2.5" stroke-linecap="round"/></svg>'
+  clear: '<svg class="weather-graphic weather-graphic--clear" viewBox="0 0 48 48" role="img"><circle class="weather-sun" cx="24" cy="24" r="10" fill="#f6b73c"/><g class="weather-rays" stroke="#f6b73c" stroke-width="3" stroke-linecap="round"><path d="M24 4v5M24 39v5M4 24h5M39 24h5M10 10l4 4M34 34l4 4M38 10l-4 4M14 34l-4 4"/></g></svg>',
+  cloudy: '<svg class="weather-graphic weather-graphic--cloudy" viewBox="0 0 48 48" role="img"><circle class="weather-cloud-sun" cx="18" cy="16" r="7" fill="#f6c453"/><path class="weather-cloud" d="M14 37h23a8 8 0 0 0 0-16 11 11 0 0 0-21-2 9 9 0 0 0-2 18Z" fill="#9eafc4"/></svg>',
+  rain: '<svg class="weather-graphic weather-graphic--rain" viewBox="0 0 48 48" role="img"><path class="weather-cloud" d="M10 29h27a8 8 0 0 0 0-16 11 11 0 0 0-21-2 9 9 0 0 0-6 18Z" fill="#879db7"/><g class="weather-rain" stroke="#4b8fe2" stroke-width="3" stroke-linecap="round"><path d="m16 34-2 6m10-6-2 6m10-6-2 6"/></g></svg>',
+  calm: '<svg class="weather-graphic weather-graphic--calm" viewBox="0 0 48 48" role="img"><path class="weather-cloud" d="M10 30h27a8 8 0 0 0 0-16 11 11 0 0 0-21-2 9 9 0 0 0-6 18Z" fill="#a9b6c6"/><path class="weather-breeze" d="M12 38h17m-10 4h17" stroke="#8696a9" stroke-width="2.5" stroke-linecap="round"/></svg>'
 };
 
 function escapeHtml(value) {
@@ -103,11 +104,13 @@ async function loadWeatherForCurrentPosition() {
   const button = document.querySelector("#weather-location-button");
   const location = document.querySelector("#weather-location");
   const condition = document.querySelector("#weather-condition");
+  if (weatherLoading) return;
   if (!navigator.geolocation) {
     location.textContent = "Trình duyệt không hỗ trợ lấy vị trí";
     return;
   }
 
+  weatherLoading = true;
   button.disabled = true;
   button.textContent = "Đang xác định…";
   navigator.geolocation.getCurrentPosition(async position => {
@@ -149,18 +152,20 @@ async function loadWeatherForCurrentPosition() {
       location.textContent = geographicAddress;
       location.title = `${latitude.toFixed(4)}°, ${longitude.toFixed(4)}°`;
       if (data.timezone) updateText("#local-time-zone", `Vùng giờ: ${data.timezone}`);
-      button.textContent = "Cập nhật";
+      button.textContent = "Làm mới";
     } catch {
       condition.textContent = "Không lấy được thời tiết";
       location.textContent = "Không thể kết nối dịch vụ thời tiết";
       button.textContent = "Thử lại";
     } finally {
+      weatherLoading = false;
       button.disabled = false;
     }
   }, () => {
-    location.textContent = "Bạn chưa cho phép dùng vị trí";
+    weatherLoading = false;
+    location.textContent = "Chưa thể lấy vị trí tự động — hãy cho phép quyền Vị trí trong trình duyệt";
     button.disabled = false;
-    button.textContent = "Dùng vị trí";
+    button.textContent = "Thử lại";
   }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 15 * 60 * 1000 });
 }
 
@@ -266,27 +271,6 @@ function updateDonut(summary) {
   )`;
 }
 
-function renderDataZones(zones) {
-  const container = document.querySelector("#data-zone-list");
-  if (!zones.length) {
-    container.innerHTML = '<p class="empty-state">Chưa có vùng dữ liệu trong CSDL.</p>';
-    return;
-  }
-
-  container.innerHTML = `
-    <table class="data-zone-table">
-      <thead><tr><th>Vùng dữ liệu</th><th>Độ nhạy cảm</th><th>Tệp đã đặt</th><th>Thư mục lưu</th><th>Mô tả</th></tr></thead>
-      <tbody>${zones.map(zone => `
-        <tr>
-          <td><strong>${escapeHtml(zone.name)}</strong><span class="zone-id">${escapeHtml(zone.id)}</span></td>
-          <td><span class="sensitivity sensitivity--${escapeHtml(zone.sensitivity)}">${escapeHtml(zone.sensitivity)}</span></td>
-          <td>${escapeHtml(zone.document_count)}</td>
-          <td class="data-zone-table__path">${escapeHtml(zone.storage_path)}</td>
-          <td class="data-zone-table__description">${escapeHtml(zone.description)}</td>
-        </tr>`).join("")}</tbody>
-    </table>`;
-}
-
 function renderConnectionRequests(requests) {
   const container = document.querySelector("#connection-request-list");
   const count = document.querySelector("#pending-request-count");
@@ -363,26 +347,6 @@ async function refreshDashboard() {
     setConnection(true);
   } catch {
     setConnection(false);
-  }
-}
-
-async function refreshDataZones() {
-  try {
-    if (!adminToken) {
-      document.querySelector("#data-zone-list").innerHTML =
-        '<p class="empty-state">Đăng nhập quyền admin để xem đường dẫn các khu dữ liệu.</p>';
-      return;
-    }
-    const response = await fetch("/api/data-zones", {
-      cache: "no-store", headers: apiHeaders()
-    });
-    if (!response.ok) throw new Error("Không lấy được vùng dữ liệu");
-    const data = await response.json();
-    renderDataZones(data.zones ?? []);
-  } catch {
-    document.querySelector("#data-zone-list").innerHTML = adminToken
-      ? '<p class="empty-state">Không thể tải khu dữ liệu.</p>'
-      : '<p class="empty-state">Đăng nhập quyền admin để xem đường dẫn các khu dữ liệu.</p>';
   }
 }
 
@@ -533,13 +497,6 @@ async function openEnrollmentCodeDialog() {
   showDialog("issue-enrollment-code-dialog");
 }
 
-function openUploadDocumentDialog() {
-  const form = document.querySelector("#upload-document-form");
-  form.reset();
-  document.querySelector("#upload-document-message").textContent = "";
-  showDialog("upload-document-dialog");
-}
-
 function openRevokeDialog(deviceId) {
   deviceToRevoke = deviceId;
   document.querySelector("#revoke-device-text").textContent =
@@ -613,10 +570,6 @@ document.querySelector("#issue-enrollment-code-button").addEventListener("click"
   requireAdmin(() => openEnrollmentCodeDialog());
 });
 
-document.querySelector("#upload-document-button").addEventListener("click", () => {
-  requireAdmin(() => openUploadDocumentDialog());
-});
-
 document.querySelector("#weather-location-button").addEventListener("click", () => {
   loadWeatherForCurrentPosition();
 });
@@ -650,7 +603,6 @@ document.querySelector("#admin-login-form").addEventListener("submit", async eve
     sessionStorage.setItem("ztas_admin_token", adminToken);
     closeDialog("admin-login-dialog");
     refreshMacCaptureSettings();
-    refreshDataZones();
     const action = pendingAdminAction;
     pendingAdminAction = null;
     action?.();
@@ -690,32 +642,6 @@ document.querySelector("#enroll-device-form").addEventListener("submit", async e
     showDialog("device-key-dialog");
     refreshDashboard();
     refreshConnectionRequests();
-  } catch (error) {
-    message.textContent = error.message;
-  }
-});
-
-document.querySelector("#upload-document-form").addEventListener("submit", async event => {
-  event.preventDefault();
-  const form = event.currentTarget;
-  const message = document.querySelector("#upload-document-message");
-  const file = form.elements.document.files[0];
-  if (!file) return;
-  if (file.size > 25 * 1024 * 1024) {
-    message.textContent = "Tệp vượt giới hạn 25 MB.";
-    return;
-  }
-
-  message.textContent = "Đang tải tệp lên…";
-  try {
-    const response = await fetch("/api/data-zones/upload", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${adminToken}` },
-      body: new FormData(form)
-    });
-    await parseResponse(response);
-    closeDialog("upload-document-dialog");
-    refreshDataZones();
   } catch (error) {
     message.textContent = error.message;
   }
@@ -847,14 +773,13 @@ document.querySelector("#logout-button").addEventListener("click", async () => {
 });
 
 refreshDashboard();
-refreshDataZones();
 refreshConnectionRequests();
 refreshMacCaptureSettings();
 updateLocalDateTime();
+loadWeatherForCurrentPosition();
 setInterval(updateLocalDateTime, 1000);
 setInterval(() => {
   refreshDashboard();
-  refreshDataZones();
   refreshConnectionRequests();
   refreshMacCaptureSettings();
 }, 1000);

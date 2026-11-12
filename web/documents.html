@@ -9,9 +9,9 @@
   <link rel="apple-touch-icon" href="/assets/ptit-logo-white.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <link rel="stylesheet" href="/assets/common.css">
-  <link rel="stylesheet" href="/assets/documents.css">
+  <link rel="stylesheet" href="/assets/documents.css?v=3">
   <script defer src="/assets/common.js"></script>
-  <script defer src="/assets/documents.js?v=13"></script>
+  <script defer src="/assets/documents.js?v=16"></script>
 </head>
 <body>
   <header class="topbar">
@@ -41,21 +41,28 @@
 
       <section class="document-workspace">
         <div class="document-levels" id="document-levels" aria-label="Các mức tài liệu">
-          <button class="document-card document-card--public" data-zone="public" type="button"><span>Cấp 1</span><strong>Công khai</strong><small>Guest trở lên</small></button>
-          <button class="document-card document-card--internal" data-zone="internal" type="button"><span>Cấp 2</span><strong>Nội bộ</strong><small>Employee trở lên</small></button>
-          <button class="document-card document-card--confidential" data-zone="confidential" type="button"><span>Cấp 3</span><strong>Mật / nhạy cảm</strong><small>Manager trở lên</small></button>
-          <button class="document-card document-card--secret" data-zone="secret" type="button"><span>Cấp 4</span><strong>Bí mật</strong><small>Engineer trở lên · MFA 3</small></button>
-          <button class="document-card document-card--restricted" data-zone="restricted" type="button"><span>Cấp 5</span><strong>Hạn chế đặc biệt</strong><small>Admin · MFA 5</small></button>
+          <button class="document-card document-card--public" data-zone="public" data-level="1" type="button"><span>Cấp 1</span><strong>Công khai</strong><small>Guest · quyền Cấp 1</small></button>
+          <button class="document-card document-card--internal" data-zone="internal" data-level="2" type="button"><span>Cấp 2</span><strong>Nội bộ</strong><small>Employee · quyền Cấp 1–2</small></button>
+          <button class="document-card document-card--confidential" data-zone="confidential" data-level="3" type="button"><span>Cấp 3</span><strong>Mật / nhạy cảm</strong><small>Manager · quyền Cấp 1–3</small></button>
+          <button class="document-card document-card--secret" data-zone="secret" data-level="4" type="button"><span>Cấp 4</span><strong>Bí mật</strong><small>Engineer · quyền Cấp 1–4 · MFA 3</small></button>
+          <button class="document-card document-card--restricted" data-zone="restricted" data-level="5" type="button"><span>Cấp 5</span><strong>Hạn chế đặc biệt</strong><small>Admin · quyền Cấp 1–5 · MFA 5</small></button>
         </div>
 
         <section class="panel viewer-panel" aria-live="polite">
           <header class="viewer-panel__header"><div><p class="page-kicker">Kết quả truy cập</p><h2 id="viewer-title">Chọn mức tài liệu để đọc</h2></div><span class="decision-badge" id="decision-badge">CHỜ</span></header>
           <div class="viewer-content" id="viewer-content"><p>Chọn một phân vùng để xem các tệp được cấp quyền, sau đó bấm tên tệp để mở cửa sổ đọc.</p></div>
+          <section class="viewer-file-section">
+            <header><h3>Tệp trong phân vùng</h3><p>Chọn một mức tài liệu ở trên để tải danh sách các tệp bạn được phép xem.</p></header>
+            <div class="stored-document-list" id="stored-document-list"><p>Chưa chọn phân vùng.</p></div>
+          </section>
         </section>
 
-        <section class="panel custom-document-panel">
-          <header class="panel__header"><h2>Tệp trong phân vùng</h2><p>Chọn một mức tài liệu ở trên để tải danh sách các tệp bạn được phép xem.</p></header>
-          <div class="stored-document-list" id="stored-document-list"><p>Chưa chọn phân vùng.</p></div>
+        <section class="panel document-admin-storage" id="document-admin-storage" hidden>
+          <header class="document-admin-storage__header">
+            <div><h2>Khu dữ liệu được bảo vệ</h2><p>Quản lý các phân vùng và nạp tệp trực tiếp vào đúng mức bảo vệ.</p></div>
+            <button class="button button--primary" id="document-upload-button" type="button">Tải tài liệu lên</button>
+          </header>
+          <div class="document-zone-table-wrap" id="document-zone-list"><p>Đang tải phân vùng dữ liệu…</p></div>
         </section>
       </section>
     </section>
@@ -69,6 +76,16 @@
       </header>
       <div class="document-reader-dialog__content" id="document-reader-dialog-content"></div>
     </article>
+  </dialog>
+
+  <dialog class="document-upload-dialog" id="document-upload-dialog">
+    <form class="document-upload-dialog__card" id="document-upload-form" enctype="multipart/form-data">
+      <header class="document-upload-dialog__header"><div><p class="page-kicker">Quản trị dữ liệu</p><h2>Tải tài liệu vào phân vùng</h2><p>Chỉ Admin được nạp tệp. Policy của phân vùng quyết định ai được đọc tệp.</p></div><button class="document-reader-dialog__close" id="document-upload-close" type="button" aria-label="Đóng">×</button></header>
+      <label class="document-upload-field">Phân vùng dữ liệu<select name="zone_id" required><option value="public">public — công khai</option><option value="internal">internal — nội bộ</option><option value="confidential">confidential — mật</option><option value="secret">secret — bí mật</option><option value="restricted">restricted — hạn chế đặc biệt</option></select></label>
+      <label class="document-upload-field">Tệp tài liệu<input name="document" type="file" required><small>Tối đa 25 MB. Tệp trùng tên trong cùng phân vùng sẽ được thay thế.</small></label>
+      <p class="document-upload-message" id="document-upload-message"></p>
+      <footer class="document-upload-dialog__footer"><button class="button button--secondary" id="document-upload-cancel" type="button">Hủy</button><button class="button button--primary" type="submit">Tải lên</button></footer>
+    </form>
   </dialog>
 </body>
 </html>

@@ -18,16 +18,16 @@ function roleLabel(role) {
 function rolePermission(role) {
   const permissions = {
     guest: "Quyền hệ thống: tài liệu công khai (cấp 1).",
-    employee: "Quyền hệ thống: tài liệu công khai và nội bộ (tối đa cấp 2).",
-    manager: "Quyền hệ thống: đến tài liệu confidential khi thiết bị, vị trí và MFA đáp ứng policy.",
-    engineer: "Quyền hệ thống: đến tài liệu secret khi thiết bị, vị trí và MFA đáp ứng policy.",
-    admin: "Quyền hệ thống: đọc toàn bộ phân vùng sau khi tài khoản và thiết bị được cấp phát hợp lệ."
+    employee: "Quyền hệ thống: đọc tài liệu cấp 1–2 khi thiết bị đáp ứng policy.",
+    manager: "Quyền hệ thống: đọc tài liệu cấp 1–3 khi thiết bị đáp ứng policy.",
+    engineer: "Quyền hệ thống: đọc tài liệu cấp 1–4 khi thiết bị, vị trí và MFA đáp ứng policy.",
+    admin: "Quyền hệ thống: đọc toàn bộ tài liệu cấp 1–5 sau khi tài khoản và thiết bị được cấp phát hợp lệ."
   };
   return permissions[role] ?? "Quyền được xác định bởi policy hệ thống.";
 }
 
 function rolePermissionShort(role) {
-  return ({ guest: "Cấp 1 · Public", employee: "Cấp 2 · Internal", manager: "Cấp 3 · Confidential", engineer: "Cấp 4 · Secret", admin: "Cấp 5 · Restricted" })[role] ?? "Theo policy";
+  return ({ guest: "Cấp 1", employee: "Cấp 1–2", manager: "Cấp 1–3", engineer: "Cấp 1–4", admin: "Cấp 1–5" })[role] ?? "Theo policy";
 }
 
 function apiHeaders(json = false) {
