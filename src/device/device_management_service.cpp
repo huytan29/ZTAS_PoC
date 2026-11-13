@@ -196,7 +196,8 @@ DeviceOperationResult DeviceManagementService::enroll(
     const std::string& device_type,
     const std::string& enrollment_profile,
     const std::string& allowed_ip_address,
-    const std::string& declared_mac_address
+    const std::string& declared_mac_address,
+    const std::string& browser_proof_hash
 ) const {
     std::lock_guard<std::mutex> lock(mutex_);
 
@@ -277,6 +278,10 @@ DeviceOperationResult DeviceManagementService::enroll(
             {"active", true},
             {"key_hash", hash_key(device_key)}
         };
+        if (!browser_proof_hash.empty()) {
+            credentials["devices"][device_id]["browser_proof_hash"] =
+                browser_proof_hash;
+        }
 
         devices_policy["devices"][device_id] = {
             {"registered", true},

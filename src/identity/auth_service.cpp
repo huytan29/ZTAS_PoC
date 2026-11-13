@@ -871,6 +871,9 @@ std::string AuthService::issue_token(
         payload["reader_device_id"] = subject.reader_device_id;
         payload["reader_location_id"] = subject.reader_location_id;
     }
+    if (!subject.mfa_challenge_id.empty()) {
+        payload["mfa_challenge_id"] = subject.mfa_challenge_id;
+    }
 
     const std::string encoded_payload =
         base64url_encode(payload.dump());
@@ -979,7 +982,8 @@ std::optional<AccessSubject> AuthService::verify_token(
                 ),
                 account_expires_at,
                 payload.value("reader_device_id", ""),
-                payload.value("reader_location_id", "")
+                payload.value("reader_location_id", ""),
+                payload.value("mfa_challenge_id", "")
             };
         }
 

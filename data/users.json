@@ -19,6 +19,17 @@
       "password_hash": "pbkdf2_sha256$200000$932f79f264bc8ac847c9afd25a66d5ee$dc601cad9ccd38c53346acf09ee08e556b2aa3ef2193d27851209bce07f51149",
       "role": "engineer",
       "username": "ubuntu1"
+    },
+    {
+      "account_key_hash": "pbkdf2_sha256$200000$a54818dab2a0b6eaa2e10dc6c33c047e$2a929f6575910a74b5c2b2b2ebebc9469a5ead95a4b652627f9acd8d77b9ffe4",
+      "account_key_issued_at": 1794576182,
+      "allowed_device_ids": [
+        "web-17945762606205e503221436"
+      ],
+      "expires_at": 0,
+      "password_hash": "pbkdf2_sha256$200000$00832046518204f942acca6f019b1389$63b19cec3d99c93cefc27e26a4acc1e8d5a6b33565c714f79b1db79f96e8559c",
+      "role": "manager",
+      "username": "huytan29"
     }
   ]
 }

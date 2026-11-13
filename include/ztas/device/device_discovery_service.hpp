@@ -1,6 +1,7 @@
 #pragma once
 
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -41,12 +42,19 @@ public:
         const std::string& device_type = "",
         const std::string& enrollment_profile = "",
         const std::string& requested_username = "",
-        bool enrollment_verified = false
+        bool enrollment_verified = false,
+        const std::string& browser_device_proof = ""
     ) const;
 
     std::vector<PendingDeviceRequest> list_pending() const;
 
     bool resolve(const std::string& device_id) const;
+
+    // Chi dung noi bo khi admin phe duyet mot yeu cau ket noi tu web. Gia tri
+    // tra ve la hash, khong bao gio la bang chung thiet bi dang ro.
+    std::optional<std::string> browser_proof_hash(
+        const std::string& device_id
+    ) const;
 
 private:
     std::string discovery_file_;

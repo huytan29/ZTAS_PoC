@@ -3,6 +3,7 @@ const message = document.querySelector("#connect-device-message");
 const submit = form.querySelector("button[type=submit]");
 let approvalPoll = 0;
 let waitingApproval = false;
+let retriedWithFreshIdentity = false;
 
 function getDeviceId() {
   const stored = localStorage.getItem("ztas_connect_device_id");
@@ -12,6 +13,11 @@ function getDeviceId() {
   const value = `web-${random.slice(0, 24).toLowerCase()}`;
   localStorage.setItem("ztas_connect_device_id", value);
   return value;
+}
+
+function createFreshDeviceIdentity() {
+  localStorage.removeItem("ztas_connect_device_id");
+  return getDeviceId();
 }
 
 function deviceType() {
@@ -74,7 +80,11 @@ form.addEventListener("submit", async event => {
       })
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.message || data.error || "Không thể gửi yêu cầu kết nối");
+    if (!response.ok) {
+      const error = new Error(data.message || data.error || "Không thể gửi yêu cầu kết nối");
+      error.code = data.error || "";
+      throw error;
+    }
     form.elements.password.value = "";
     form.elements.account_key.value = "";
     message.textContent = data.status === "ALREADY_APPROVED"
@@ -83,7 +93,16 @@ form.addEventListener("submit", async event => {
     waitingApproval = true;
     waitForApproval();
   } catch (error) {
-    message.textContent = error.message === "INVALID_ACCOUNT_ENROLLMENT_CREDENTIALS"
+    if (error.code === "DEVICE_BROWSER_PROOF_REQUIRED") {
+      createFreshDeviceIdentity();
+      if (!retriedWithFreshIdentity) {
+        retriedWithFreshIdentity = true;
+        message.textContent = "Trình duyệt này chưa có chứng thực của thiết bị cũ. Đang tạo yêu cầu đăng ký mới…";
+        window.setTimeout(() => form.requestSubmit(), 0);
+      } else {
+        message.textContent = "Không thể khôi phục chứng thực thiết bị cũ. Hãy tải lại trang và gửi yêu cầu đăng ký lại.";
+      }
+    } else message.textContent = error.message === "INVALID_ACCOUNT_ENROLLMENT_CREDENTIALS"
       ? "Tên đăng nhập, mật khẩu hoặc Account Key không đúng."
       : error.message;
   } finally {

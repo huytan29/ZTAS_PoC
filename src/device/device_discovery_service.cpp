@@ -2,6 +2,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <openssl/sha.h>
+
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -19,6 +21,24 @@ long long current_epoch() {
     return std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()
     ).count();
+}
+
+std::string hash_browser_proof(const std::string& proof) {
+    if (proof.empty()) return "";
+    unsigned char digest[SHA256_DIGEST_LENGTH];
+    SHA256(
+        reinterpret_cast<const unsigned char*>(proof.data()),
+        proof.size(),
+        digest
+    );
+    static constexpr char digits[] = "0123456789abcdef";
+    std::string output;
+    output.reserve(sizeof(digest) * 2);
+    for (const unsigned char byte : digest) {
+        output.push_back(digits[(byte >> 4) & 0x0f]);
+        output.push_back(digits[byte & 0x0f]);
+    }
+    return output;
 }
 
 void write_json(const fs::path& path, const json& value) {
@@ -76,7 +96,8 @@ DiscoveryResult DeviceDiscoveryService::record_attempt(
     const std::string& device_type,
     const std::string& enrollment_profile,
     const std::string& requested_username,
-    bool enrollment_verified
+    bool enrollment_verified,
+    const std::string& browser_device_proof
 ) const {
     std::lock_guard<std::mutex> lock(mutex_);
 
@@ -110,6 +131,10 @@ DiscoveryResult DeviceDiscoveryService::record_attempt(
         if (!requested_username.empty()) discovery["requested_username"] = requested_username;
         discovery["enrollment_verified"] = enrollment_verified ||
             discovery.value("enrollment_verified", false);
+        if (!browser_device_proof.empty()) {
+            discovery["browser_proof_hash"] =
+                hash_browser_proof(browser_device_proof);
+        }
         discovery["attempt_count"] = discovery.value("attempt_count", 0) + 1;
         discovery["status"] = "PENDING_APPROVAL";
         write_json(path, discoveries);
@@ -177,5 +202,22 @@ bool DeviceDiscoveryService::resolve(const std::string& device_id) const {
         return true;
     } catch (const std::exception&) {
         return false;
+    }
+}
+
+std::optional<std::string> DeviceDiscoveryService::browser_proof_hash(
+    const std::string& device_id
+) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    try {
+        const json discoveries = read_discoveries(fs::path(discovery_file_));
+        if (!discoveries["devices"].contains(device_id)) return std::nullopt;
+        const std::string value = discoveries["devices"][device_id].value(
+            "browser_proof_hash", ""
+        );
+        return value.empty() ? std::nullopt
+                             : std::optional<std::string>{value};
+    } catch (const std::exception&) {
+        return std::nullopt;
     }
 }

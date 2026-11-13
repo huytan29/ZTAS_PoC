@@ -54,6 +54,18 @@
       "location_id": "campus-network",
       "registered": true,
       "trust_level": 4
+    },
+    "web-17945762606205e503221436": {
+      "allowed_ip_addresses": [
+        "192.168.2.10"
+      ],
+      "device_name": "MacIntel · macos",
+      "device_type": "macos",
+      "enrollment_profile": "manual",
+      "lifecycle_status": "ACTIVE",
+      "location_id": "lab-network",
+      "registered": true,
+      "trust_level": 3
     }
   }
 }

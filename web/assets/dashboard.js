@@ -338,7 +338,7 @@ function renderConnectionRequests(requests) {
 function renderMfaRequests(requests) {
   const container = document.querySelector("#mfa-request-list");
   const count = document.querySelector("#pending-mfa-request-count");
-  const pending = requests.filter(request => !request.code_ready);
+  const pending = requests.filter(request => !request.code_ready && !request.code_revoked);
   count.textContent = `${pending.length} yêu cầu chờ`;
 
   if (!requests.length) {
@@ -355,11 +355,13 @@ function renderMfaRequests(requests) {
           <td><span class="device-zone">${escapeHtml(request.resource_id)}</span></td>
           <td><span class="trust-value">Cấp ${escapeHtml(request.required_auth_level)}</span></td>
           <td class="request-time"><strong>${formatTime(request.requested_at)}</strong><span>Hết hạn: ${formatTime(request.expires_at)}</span></td>
-          <td><span class="device-status device-status--${request.code_used ? "identified" : request.code_ready ? "identified" : "step-up"}">${request.code_used ? "Đã dùng trong phiên" : request.code_ready ? "Đã cấp mã" : "Chờ admin"}</span></td>
-          <td>${request.code_used
-            ? '<span class="account-empty">Đăng xuất để yêu cầu mã mới</span>'
+          <td><span class="device-status device-status--${request.code_revoked ? "unidentified" : request.code_used ? "identified" : request.code_ready ? "identified" : "step-up"}">${request.code_revoked ? "Đã thu hồi" : request.code_used ? "Đã dùng trong phiên" : request.code_ready ? "Đã cấp mã" : "Chờ admin"}</span></td>
+          <td>${request.code_revoked
+            ? '<span class="account-empty">Quyền Step-Up đã bị chặn</span>'
+            : request.code_used
+            ? `<button class="button button--danger-outline button--small" data-revoke-mfa="${escapeHtml(request.challenge_id)}">Thu hồi MFA</button>`
             : request.code_ready
-            ? '<span class="account-empty">Đã thông báo cho máy người dùng</span>'
+            ? `<button class="button button--danger-outline button--small" data-revoke-mfa="${escapeHtml(request.challenge_id)}">Thu hồi MFA</button>`
             : `<button class="button button--primary button--small" data-issue-mfa-code="${escapeHtml(request.challenge_id)}" data-mfa-user="${escapeHtml(request.username)}" data-mfa-resource="${escapeHtml(request.resource_id)}">Tạo mã</button>`}</td>
         </tr>`).join("")}</tbody>
     </table>`;
@@ -372,6 +374,9 @@ function renderMfaRequests(requests) {
         button.dataset.mfaResource
       ));
     });
+  });
+  container.querySelectorAll("[data-revoke-mfa]").forEach(button => {
+    button.addEventListener("click", () => revokeMfaCode(button.dataset.revokeMfa));
   });
 }
 
@@ -534,13 +539,24 @@ function openMfaCodeDialog(challengeId, username, resourceId) {
   const form = document.querySelector("#issue-mfa-code-form");
   form.reset();
   document.querySelector("#issue-mfa-code-context").textContent =
-    `Cấp mã cho ${username} khi truy cập ${resourceId}. Mã chỉ có hiệu lực 2 phút sau khi tạo.`;
+    `Cấp mã cho ${username} khi truy cập ${resourceId}. Admin có thể thu hồi mã hoặc quyền Step-Up bất cứ lúc nào.`;
   document.querySelector("#issue-mfa-code-message").textContent = "";
   showDialog("issue-mfa-code-dialog");
 }
 
 function validAdminMfaCode(code) {
   return code.length >= 6 && /[A-Z]/.test(code) && /[^A-Za-z0-9\s]/.test(code);
+}
+
+async function revokeMfaCode(challengeId) {
+  if (!window.confirm("Thu hồi mã MFA và chặn ngay quyền Step-Up đang dùng?")) return;
+  try {
+    const response = await fetch(`/api/mfa-requests/${encodeURIComponent(challengeId)}`, {
+      method: "DELETE", headers: apiHeaders()
+    });
+    await parseResponse(response);
+    refreshMfaRequests();
+  } catch (error) { alert(error.message); }
 }
 
 async function loadAssignableUsers(selector) {

@@ -30,6 +30,13 @@ public:
         const std::string& source_ip
     ) const;
 
+    // Bang chung HttpOnly duoc cap luc ket noi thiet bi lan dau. Gia tri dang
+    // ro chi nam tai trinh duyet da duoc duyet; server chi luu SHA-256 hash.
+    bool verify_browser_proof(
+        const std::string& device_id,
+        const std::string& browser_device_proof
+    ) const;
+
     // Cho phep dich vu phat hien bo qua mot yeu cau da duoc cap phat. Kiem
     // tra dong thoi policy thiet bi va credential dang hoat dong, khong chi
     // dua vao Device ID do client tu khai bao.
@@ -37,7 +44,8 @@ public:
 
     std::optional<ReaderDeviceContext> resolve_reader_context(
         const std::vector<std::string>& allowed_device_ids,
-        const std::string& source_ip
+        const std::string& source_ip,
+        const std::string& browser_device_proof
     ) const;
 
 private:

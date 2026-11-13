@@ -23,6 +23,8 @@ struct AccessSubject{
     // duoc server doi chieu khi bat dau phien.
     std::string reader_device_id;
     std::string reader_location_id;
+    // Gan vao token sau Step-Up de Server co the thu hoi ngay quyen MFA.
+    std::string mfa_challenge_id;
 };
 
 // Tài nguyên được bảo vệ trong hệ thống

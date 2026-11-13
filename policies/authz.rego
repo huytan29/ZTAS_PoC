@@ -103,8 +103,8 @@ auth_sufficient if {
 }
 
 # Admin van phai dang nhap tu thiet bi da dang ky, dung IP duoc cap va nam
-# trong pham vi tai khoan. Sau khi cac dieu kien nen tang nay dung, admin co
-# quyen doc toan bo phan vung tai lieu cua PoC ma khong phai step-up theo cap.
+# trong pham vi tai khoan. Admin co quyen role toan bo phan vung, nhung van
+# phai Step-Up tu cap tai lieu 3 theo yeu cau xac thuc bo sung.
 admin_full_access if {
     input.subject.role == "admin"
     valid_context
@@ -115,6 +115,7 @@ admin_full_access if {
     account_active
     account_device_bound
     location_matches_device
+    auth_sufficient
 }
 
 output(effect, rule_id, reason, severity, required_auth) := {

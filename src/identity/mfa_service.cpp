@@ -101,7 +101,7 @@ MfaChallenge MfaService::issue_challenge(
                 stored.expires_at,
                 stored.code_ready,
                 true,
-                stored.code_used
+                stored.code_used || stored.code_revoked
             };
         }
     }
@@ -120,6 +120,7 @@ MfaChallenge MfaService::issue_challenge(
         target_level,
         requested_at,
         expires_at,
+        false,
         false,
         false,
         ""
@@ -154,7 +155,8 @@ bool MfaService::issue_admin_code(
     const long long now = current_epoch();
     remove_expired_locked(now);
     const auto found = challenges_.find(challenge_id);
-    if (found == challenges_.end() || found->second.code_used) return false;
+    if (found == challenges_.end() || found->second.code_used ||
+        found->second.code_revoked) return false;
 
     found->second.code_fingerprint = fingerprint(
         challenge_id,
@@ -176,7 +178,7 @@ std::vector<MfaApprovalRequest> MfaService::list_requests() {
             challenge_id, stored.username, stored.role, stored.device_id,
             stored.resource_id, stored.required_auth_level,
             stored.requested_at, stored.expires_at, stored.code_ready,
-            stored.code_used
+            stored.code_used, stored.code_revoked
         });
     }
     std::sort(requests.begin(), requests.end(), [](const auto& left, const auto& right) {
@@ -200,7 +202,7 @@ std::optional<MfaApprovalRequest> MfaService::request_status(
         challenge_id, stored.username, stored.role, stored.device_id,
         stored.resource_id, stored.required_auth_level,
         stored.requested_at, stored.expires_at, stored.code_ready,
-        stored.code_used
+        stored.code_used, stored.code_revoked
     };
 }
 
@@ -217,7 +219,8 @@ std::optional<int> MfaService::verify_challenge(
     if (found == challenges_.end() ||
         found->second.username != subject.username ||
         found->second.expires_at < now ||
-        !found->second.code_ready || found->second.code_used) {
+        !found->second.code_ready || found->second.code_used ||
+        found->second.code_revoked) {
         return std::nullopt;
     }
 
@@ -246,6 +249,27 @@ void MfaService::clear_user_session(const std::string& username) {
             ++iterator;
         }
     }
+}
+
+bool MfaService::revoke_challenge(const std::string& challenge_id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    remove_expired_locked(current_epoch());
+    const auto found = challenges_.find(challenge_id);
+    if (found == challenges_.end() || found->second.code_revoked) return false;
+    found->second.code_revoked = true;
+    return true;
+}
+
+bool MfaService::is_challenge_active(
+    const std::string& challenge_id,
+    const std::string& username
+) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    remove_expired_locked(current_epoch());
+    const auto found = challenges_.find(challenge_id);
+    return found != challenges_.end() &&
+        found->second.username == username &&
+        found->second.code_used && !found->second.code_revoked;
 }
 
 void MfaService::remove_expired_locked(long long now) {

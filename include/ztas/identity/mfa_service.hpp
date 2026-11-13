@@ -28,6 +28,7 @@ struct MfaApprovalRequest {
     long long expires_at = 0;
     bool code_ready = false;
     bool code_used = false;
+    bool code_revoked = false;
 };
 
 class MfaService {
@@ -65,6 +66,12 @@ public:
     // cau moi o phien dang nhap sau.
     void clear_user_session(const std::string& username);
 
+    bool revoke_challenge(const std::string& challenge_id);
+    bool is_challenge_active(
+        const std::string& challenge_id,
+        const std::string& username
+    );
+
 private:
     struct StoredChallenge {
         std::string username;
@@ -76,6 +83,7 @@ private:
         long long expires_at = 0;
         bool code_ready = false;
         bool code_used = false;
+        bool code_revoked = false;
         std::string code_fingerprint;
     };
 

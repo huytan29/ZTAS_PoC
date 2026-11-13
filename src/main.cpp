@@ -20,6 +20,8 @@
 #include <httplib.h>
 #include <nlohmann/json.hpp>
 
+#include <openssl/rand.h>
+
 #include <cstdlib>
 #include <algorithm>
 #include <cerrno>
@@ -439,6 +441,40 @@ std::optional<std::string> read_bearer_token(
     return std::nullopt;
 }
 
+std::optional<std::string> read_cookie_value(
+    const httplib::Request& request,
+    const std::string& expected_name
+) {
+    if (!request.has_header("Cookie")) return std::nullopt;
+    std::stringstream cookies(request.get_header_value("Cookie"));
+    std::string cookie;
+    while (std::getline(cookies, cookie, ';')) {
+        const auto equal = cookie.find('=');
+        if (equal == std::string::npos) continue;
+        std::string name = cookie.substr(0, equal);
+        std::string value = cookie.substr(equal + 1);
+        name.erase(0, name.find_first_not_of(" \t"));
+        value.erase(0, value.find_first_not_of(" \t"));
+        if (name == expected_name && !value.empty()) return value;
+    }
+    return std::nullopt;
+}
+
+std::string create_browser_device_proof() {
+    std::array<unsigned char, 32> bytes{};
+    if (RAND_bytes(bytes.data(), static_cast<int>(bytes.size())) != 1) {
+        return "";
+    }
+    static constexpr char digits[] = "0123456789abcdef";
+    std::string proof = "bdp_";
+    proof.reserve(4 + bytes.size() * 2);
+    for (const unsigned char value : bytes) {
+        proof.push_back(digits[(value >> 4) & 0x0f]);
+        proof.push_back(digits[value & 0x0f]);
+    }
+    return proof;
+}
+
 std::optional<AccessSubject> authenticate_request(
     const httplib::Request& request,
     const AuthService& auth_service,
@@ -531,6 +567,23 @@ void handle_document_request(
         authenticate_request(request, auth_service, response);
 
     if (!subject.has_value()) {
+        return;
+    }
+
+    if (subject->auth_level > 1 &&
+        (subject->mfa_challenge_id.empty() ||
+         !mfa_service.is_challenge_active(
+             subject->mfa_challenge_id, subject->username))) {
+        audit_logger.write({
+            {"event_type", "MFA_SESSION_REVOKED"},
+            {"username", subject->username},
+            {"reason_code", "MFA_CODE_REVOKED_OR_EXPIRED"},
+            {"severity", "high"}
+        });
+        send_json(response, 401, {
+            {"error", "MFA_SESSION_REVOKED"},
+            {"message", "Quyen Step-Up da bi thu hoi hoac het han"}
+        });
         return;
     }
 
@@ -2043,20 +2096,31 @@ int main() {
             enrollment_profile = "account-key";
             enrollment_verified = true;
 
-            // Sau khi da xac minh ca ba thong tin, tao phien HTTP ngan han
-            // cho trang ket noi. Phien nay chua the doc du lieu khi thiet bi
-            // dang cho duyet; no chi giup trinh duyet tu dang nhap ngay khi
-            // admin cap phat thanh cong ma khong can nhap lai thong tin.
-            const std::string enrollment_session = auth_service.issue_token(*subject);
-            response.set_header(
-                "Set-Cookie",
-                "ZTAS_SESSION_TOKEN=" + enrollment_session +
-                    "; Path=/; Max-Age=900; HttpOnly; SameSite=Strict"
-            );
+            std::string browser_device_proof = read_cookie_value(
+                request, "ZTAS_DEVICE_PROOF"
+            ).value_or("");
 
             // Yeu cau ket noi la thao tac mot lan. Kiem tra nay dat sau
             // xac minh tai khoan de khong lo trang thai cua mot device_id.
             if (device_registry.is_active_registered(device_id)) {
+                // Khong tu chon mot thiet bi chi vi tai khoan gan duy nhat
+                // voi no. Trinh duyet phai chung minh dang so huu bang chung
+                // da duoc cap khi yeu cau ket noi nay duoc phe duyet.
+                if (!device_registry.verify_browser_proof(
+                        device_id, browser_device_proof
+                    )) {
+                    send_json(response, 403, {
+                        {"error", "DEVICE_BROWSER_PROOF_REQUIRED"},
+                        {"message", "Trinh duyet nay chua duoc cap phat cho thiet bi da dang ky. Hay dang ky nhu mot thiet bi moi va cho admin phe duyet."}
+                    });
+                    return;
+                }
+                const std::string enrollment_session = auth_service.issue_token(*subject);
+                response.set_header(
+                    "Set-Cookie",
+                    "ZTAS_SESSION_TOKEN=" + enrollment_session +
+                        "; Path=/; Max-Age=900; HttpOnly; SameSite=Strict"
+                );
                 discovery_service.resolve(device_id);
                 send_json(response, 200, {
                     {"status", "ALREADY_APPROVED"},
@@ -2065,6 +2129,31 @@ int main() {
                 });
                 return;
             }
+
+            if (browser_device_proof.empty()) {
+                browser_device_proof = create_browser_device_proof();
+                if (browser_device_proof.empty()) {
+                    send_json(response, 500, {{"error", "DEVICE_PROOF_GENERATION_FAILED"}});
+                    return;
+                }
+                // Cookie khong doc duoc tu JavaScript. Trong moi truong lab
+                // HTTP, Secure khong duoc dat; trien khai that phai dung HTTPS
+                // va them co Secure.
+                response.set_header(
+                    "Set-Cookie",
+                    "ZTAS_DEVICE_PROOF=" + browser_device_proof +
+                        "; Path=/; Max-Age=2592000; HttpOnly; SameSite=Strict"
+                );
+            }
+
+            // Phien ngan han giup may da gui yeu cau tu dang nhap ngay sau khi
+            // admin phe duyet. No khong tu minh cap quyen doc tai lieu.
+            const std::string enrollment_session = auth_service.issue_token(*subject);
+            response.set_header(
+                "Set-Cookie",
+                "ZTAS_SESSION_TOKEN=" + enrollment_session +
+                    "; Path=/; Max-Age=900; HttpOnly; SameSite=Strict"
+            );
 
             const DeviceSecuritySettings settings = device_security_settings.get();
             const std::string declared_mac = settings.mac_capture_enabled &&
@@ -2091,7 +2180,8 @@ int main() {
                 body.value("device_type", "unknown"),
                 enrollment_profile,
                 requested_username,
-                enrollment_verified
+                enrollment_verified,
+                browser_device_proof
             );
             if (!result.success) {
                 send_json(response, 500, {
@@ -2186,10 +2276,14 @@ int main() {
             const json body = json::parse(request.body);
             std::string source_ip = body.value("allowed_ip_address", "");
             std::string declared_mac;
+            std::optional<std::string> browser_proof_hash;
             for (const auto& pending : discovery_service.list_pending()) {
                 if (pending.device_id == body.value("device_id", "")) {
                     if (source_ip.empty()) source_ip = pending.source_ip;
                     declared_mac = pending.declared_mac_address;
+                    browser_proof_hash = discovery_service.browser_proof_hash(
+                        pending.device_id
+                    );
                     break;
                 }
             }
@@ -2213,7 +2307,8 @@ int main() {
                     body.value("device_type", "unknown"),
                     body.value("enrollment_profile", "manual"),
                     source_ip,
-                    declared_mac
+                    declared_mac,
+                    browser_proof_hash.value_or("")
                 );
 
             if (!result.success) {
@@ -2509,6 +2604,7 @@ int main() {
 
     server.Post("/api/login", [
         &auth_service,
+        &device_registry,
         &audit_logger
     ](
         const httplib::Request& request,
@@ -2535,6 +2631,36 @@ int main() {
                     {"error", "INVALID_CREDENTIALS"}
                 });
                 return;
+            }
+
+            // Tai khoan thuong chi dang nhap duoc tren trinh duyet da so huu
+            // chung thuc cua dung thiet bi duoc gan. Dieu nay chan viec chi
+            // co username/password la co the dung tai khoan o may khac.
+            if (subject->role != "admin") {
+                const std::string source_ip = request.remote_addr.empty()
+                    ? "unknown" : request.remote_addr;
+                const std::string browser_device_proof = read_cookie_value(
+                    request, "ZTAS_DEVICE_PROOF"
+                ).value_or("");
+                const auto context = device_registry.resolve_reader_context(
+                    subject->allowed_device_ids,
+                    source_ip,
+                    browser_device_proof
+                );
+                if (!context.has_value()) {
+                    audit_logger.write({
+                        {"event_type", "LOGIN_DENY"},
+                        {"username", username},
+                        {"source_ip", source_ip},
+                        {"reason_code", "DEVICE_BROWSER_PROOF_NOT_VERIFIED"},
+                        {"severity", "high"}
+                    });
+                    send_json(response, 403, {
+                        {"error", "DEVICE_BROWSER_PROOF_NOT_VERIFIED"},
+                        {"message", "Tai khoan nay chi duoc dang nhap tren thiet bi da duoc cap phat."}
+                    });
+                    return;
+                }
             }
 
             audit_logger.write({
@@ -2611,8 +2737,11 @@ int main() {
 
             const std::string source_ip = request.remote_addr.empty()
                 ? "unknown" : request.remote_addr;
+            const std::string browser_device_proof = read_cookie_value(
+                request, "ZTAS_DEVICE_PROOF"
+            ).value_or("");
             auto context = device_registry.resolve_reader_context(
-                subject->allowed_device_ids, source_ip
+                subject->allowed_device_ids, source_ip, browser_device_proof
             );
             if (!context.has_value() && subject->role == "admin") {
                 context = ReaderDeviceContext{"admin-console", "secure-zone"};
@@ -2622,7 +2751,7 @@ int main() {
                     {"event_type", "READER_LOGIN_DENY"},
                     {"username", subject->username},
                     {"source_ip", source_ip},
-                    {"reason_code", "READER_DEVICE_CONTEXT_NOT_FOUND"},
+                    {"reason_code", "READER_DEVICE_PROOF_NOT_VERIFIED"},
                     {"severity", "high"}
                 });
                 send_json(response, 403, {
@@ -2673,13 +2802,23 @@ int main() {
 
         const std::string source_ip = request.remote_addr.empty()
             ? "unknown" : request.remote_addr;
+        const std::string browser_device_proof = read_cookie_value(
+            request, "ZTAS_DEVICE_PROOF"
+        ).value_or("");
         auto context = device_registry.resolve_reader_context(
-            subject->allowed_device_ids, source_ip
+            subject->allowed_device_ids, source_ip, browser_device_proof
         );
         if (!context.has_value() && subject->role == "admin") {
             context = ReaderDeviceContext{"admin-console", "secure-zone"};
         }
         if (!context.has_value()) {
+            audit_logger.write({
+                {"event_type", "READER_CONTEXT_DENY"},
+                {"username", subject->username},
+                {"source_ip", source_ip},
+                {"reason_code", "READER_DEVICE_PROOF_NOT_VERIFIED"},
+                {"severity", "high"}
+            });
             send_json(response, 403, {
                 {"error", "READER_DEVICE_CONTEXT_NOT_FOUND"},
                 {"message", "Khong nhan dang duoc thiet bi da cap phat tren ket noi hien tai"}
@@ -2724,6 +2863,16 @@ int main() {
     ) {
         const auto subject = authenticate_request(request, auth_service, response);
         if (!subject.has_value()) return;
+        if (subject->auth_level > 1 &&
+            (subject->mfa_challenge_id.empty() ||
+             !mfa_service.is_challenge_active(
+                 subject->mfa_challenge_id, subject->username))) {
+            send_json(response, 401, {
+                {"error", "MFA_SESSION_REVOKED"},
+                {"message", "Quyen Step-Up da bi thu hoi hoac het han"}
+            });
+            return;
+        }
         const std::string zone_id = request.matches[1];
         const ProtectedResource* resource = resource_for_zone(zone_id);
         if (resource == nullptr || !request.has_header("X-Device-ID") ||
@@ -2839,7 +2988,8 @@ int main() {
                 {"requested_at", item.requested_at},
                 {"expires_at", item.expires_at},
                 {"code_ready", item.code_ready},
-                {"code_used", item.code_used}
+                {"code_used", item.code_used},
+                {"code_revoked", item.code_revoked}
             });
         }
         send_json(response, 200, {{"requests", requests}});
@@ -2866,9 +3016,37 @@ int main() {
             {"challenge_id", item->challenge_id},
             {"required_auth_level", item->required_auth_level},
             {"expires_at", item->expires_at},
-            {"status", item->code_used ? "USED" :
-                (item->code_ready ? "CODE_READY" : "PENDING_ADMIN_CODE")}
+            {"status", item->code_revoked ? "REVOKED" :
+                (item->code_used ? "USED" :
+                    (item->code_ready ? "CODE_READY" : "PENDING_ADMIN_CODE"))}
         });
+    });
+
+    // Thu hoi ma hoac phien Step-Up da cap. Token MFA gan challenge nay se
+    // bi tu choi ngay tai lan truy cap tai lieu ke tiep theo.
+    server.Delete(R"(/api/mfa-requests/([^/]+))", [
+        &auth_service,
+        &mfa_service,
+        &audit_logger
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto admin = authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) return;
+        const std::string challenge_id = request.matches[1];
+        if (!mfa_service.revoke_challenge(challenge_id)) {
+            send_json(response, 404, {{"error", "MFA_CHALLENGE_NOT_FOUND_OR_REVOKED"}});
+            return;
+        }
+        audit_logger.write({
+            {"event_type", "MFA_CODE_REVOKED_BY_ADMIN"},
+            {"actor", admin->username},
+            {"challenge_id", challenge_id},
+            {"reason_code", "ADMIN_REVOKED_MFA"},
+            {"severity", "high"}
+        });
+        send_json(response, 200, {{"status", "REVOKED"}});
     });
 
     server.Post(R"(/api/mfa-requests/([^/]+)/code)", [
@@ -2953,6 +3131,7 @@ int main() {
 
             AccessSubject elevated_subject = *subject;
             elevated_subject.auth_level = *next_auth_level;
+            elevated_subject.mfa_challenge_id = challenge_id;
 
             audit_logger.write({
                 {"event_type", "STEP_UP_PERMIT"},

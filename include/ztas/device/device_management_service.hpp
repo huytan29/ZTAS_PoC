@@ -37,7 +37,8 @@ public:
         const std::string& device_type = "unknown",
         const std::string& enrollment_profile = "manual",
         const std::string& allowed_ip_address = "",
-        const std::string& declared_mac_address = ""
+        const std::string& declared_mac_address = "",
+        const std::string& browser_proof_hash = ""
     ) const;
 
     DeviceOperationResult revoke(

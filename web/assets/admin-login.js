@@ -30,7 +30,9 @@ form.addEventListener("submit", async event => {
   } catch (error) {
     message.textContent = error.message === "INVALID_CREDENTIALS"
       ? "Tên đăng nhập hoặc mật khẩu không đúng."
-      : error.message;
+      : error.message === "DEVICE_BROWSER_PROOF_NOT_VERIFIED"
+        ? "Tài khoản này chưa được cấp phát cho trình duyệt/thiết bị hiện tại. Hãy mở trang Kết nối thiết bị để gửi yêu cầu cho quản trị viên."
+        : error.message;
   } finally {
     submit.disabled = false;
   }

@@ -195,6 +195,9 @@ async function waitForAdminCode(data) {
     if (response.ok && status.status === "USED") {
       throw new Error("Mã Step-Up đã được dùng trong phiên này. Hãy đăng xuất để yêu cầu mã mới.");
     }
+    if (response.ok && status.status === "REVOKED") {
+      throw new Error("Quản trị viên đã thu hồi mã Step-Up của yêu cầu này.");
+    }
     if (response.status === 404) throw new Error("Yêu cầu MFA đã hết hạn hoặc bị thu hồi.");
   }
   throw new Error("Hết thời gian chờ admin cấp mã MFA.");

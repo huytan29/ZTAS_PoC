@@ -4,6 +4,7 @@
 
 #include <openssl/crypto.h>
 #include <openssl/evp.h>
+#include <openssl/sha.h>
 
 #include <algorithm>
 #include <fstream>
@@ -124,6 +125,17 @@ bool verify_secret(
         ) == 0;
 }
 
+std::string hash_browser_proof(const std::string& proof) {
+    if (proof.empty()) return "";
+    unsigned char digest[SHA256_DIGEST_LENGTH];
+    SHA256(
+        reinterpret_cast<const unsigned char*>(proof.data()),
+        proof.size(),
+        digest
+    );
+    return hex_encode(digest, sizeof(digest));
+}
+
 } // namespace
 
 DeviceRegistry::DeviceRegistry(
@@ -180,6 +192,25 @@ bool DeviceRegistry::verify_source_ip(
     return false;
 }
 
+bool DeviceRegistry::verify_browser_proof(
+    const std::string& device_id,
+    const std::string& browser_device_proof
+) const {
+    if (device_id.empty() || browser_device_proof.empty()) return false;
+    try {
+        std::ifstream file(credentials_file_);
+        const json credentials = json::parse(file);
+        const auto& device = credentials.at("devices").at(device_id);
+        if (!device.value("active", false)) return false;
+        const std::string expected = device.value("browser_proof_hash", "");
+        const std::string received = hash_browser_proof(browser_device_proof);
+        return !expected.empty() && expected.size() == received.size() &&
+            CRYPTO_memcmp(expected.data(), received.data(), expected.size()) == 0;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
 bool DeviceRegistry::is_active_registered(const std::string& device_id) const {
     if (device_id.empty()) return false;
 
@@ -202,9 +233,10 @@ bool DeviceRegistry::is_active_registered(const std::string& device_id) const {
 
 std::optional<ReaderDeviceContext> DeviceRegistry::resolve_reader_context(
     const std::vector<std::string>& allowed_device_ids,
-    const std::string& source_ip
+    const std::string& source_ip,
+    const std::string& browser_device_proof
 ) const {
-    if (source_ip.empty() || source_ip == "unknown") return std::nullopt;
+    if (browser_device_proof.empty()) return std::nullopt;
 
     try {
         std::ifstream file(devices_policy_file_);
@@ -214,8 +246,7 @@ std::optional<ReaderDeviceContext> DeviceRegistry::resolve_reader_context(
             allowed_device_ids.begin(), allowed_device_ids.end(), "*"
         ) != allowed_device_ids.end();
 
-        std::optional<ReaderDeviceContext> ip_matched;
-        std::vector<ReaderDeviceContext> assigned_devices;
+        std::optional<ReaderDeviceContext> proof_matched;
         for (auto iterator = devices.begin(); iterator != devices.end(); ++iterator) {
             const std::string device_id = iterator.key();
             const json& device = iterator.value();
@@ -231,23 +262,13 @@ std::optional<ReaderDeviceContext> DeviceRegistry::resolve_reader_context(
                 device_id,
                 device.value("location_id", "unknown")
             };
-            assigned_devices.push_back(candidate);
-            if (verify_source_ip(device_id, source_ip)) {
-                if (ip_matched.has_value()) return std::nullopt;
-                ip_matched = candidate;
+            if (verify_browser_proof(device_id, browser_device_proof)) {
+                // Mot bang chung khong duoc tu y gan dong thoi cho nhieu may.
+                if (proof_matched.has_value()) return std::nullopt;
+                proof_matched = candidate;
             }
         }
-        if (ip_matched.has_value()) return ip_matched;
-
-        // Sau khi admin da duyet thiet bi va gan duy nhat mot tai khoan vao
-        // no, giao dien web chi can dung phien dang nhap cua tai khoan do.
-        // IP van duoc ghi audit; ket noi co nhieu thiet bi phu hop thi khong
-        // tu y chon, tru truong hop admin co pham vi toan cuc.
-        if (assigned_devices.size() == 1) return assigned_devices.front();
-        if (global_scope && !assigned_devices.empty()) {
-            return assigned_devices.front();
-        }
-        return std::nullopt;
+        return proof_matched;
     } catch (const std::exception&) {
         return std::nullopt;
     }
