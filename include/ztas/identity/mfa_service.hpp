@@ -31,9 +31,24 @@ struct MfaApprovalRequest {
     bool code_revoked = false;
 };
 
+struct MfaVerificationResult {
+    bool verified = false;
+    bool device_locked = false;
+    int granted_auth_level = 0;
+    int remaining_attempts = 0;
+    std::string device_id;
+};
+
+struct MfaDeviceLock {
+    std::string device_id;
+    std::string username;
+    long long locked_at = 0;
+    int failed_attempts = 0;
+};
+
 class MfaService {
 public:
-    explicit MfaService(std::string signing_secret);
+    MfaService(std::string signing_secret, std::string device_locks_file);
 
     MfaChallenge issue_challenge(
         const AccessSubject& subject,
@@ -56,7 +71,7 @@ public:
         const std::string& challenge_id
     );
 
-    std::optional<int> verify_challenge(
+    MfaVerificationResult verify_challenge(
         const AccessSubject& subject,
         const std::string& challenge_id,
         const std::string& code
@@ -72,6 +87,10 @@ public:
         const std::string& username
     );
 
+    bool is_device_locked(const std::string& device_id);
+    std::vector<MfaDeviceLock> list_device_locks();
+    bool unlock_device(const std::string& device_id);
+
 private:
     struct StoredChallenge {
         std::string username;
@@ -84,13 +103,18 @@ private:
         bool code_ready = false;
         bool code_used = false;
         bool code_revoked = false;
+        int failed_attempts = 0;
         std::string code_fingerprint;
     };
 
     std::string signing_secret_;
+    std::string device_locks_file_;
     std::mutex mutex_;
     std::unordered_map<std::string, StoredChallenge> challenges_;
+    std::unordered_map<std::string, MfaDeviceLock> device_locks_;
 
     static bool valid_admin_code(const std::string& code);
     void remove_expired_locked(long long now);
+    void load_device_locks_locked();
+    bool save_device_locks_locked() const;
 };

@@ -335,13 +335,13 @@ function renderConnectionRequests(requests) {
   });
 }
 
-function renderMfaRequests(requests) {
+function renderMfaRequests(requests, lockedDevices = []) {
   const container = document.querySelector("#mfa-request-list");
   const count = document.querySelector("#pending-mfa-request-count");
   const pending = requests.filter(request => !request.code_ready && !request.code_revoked);
   count.textContent = `${pending.length} yêu cầu chờ`;
 
-  if (!requests.length) {
+  if (!requests.length && !lockedDevices.length) {
     container.innerHTML = '<p class="empty-state">Không có yêu cầu MFA đang chờ xử lý.</p>';
     return;
   }
@@ -349,7 +349,15 @@ function renderMfaRequests(requests) {
   container.innerHTML = `
     <table class="connection-request-table">
       <thead><tr><th>Người dùng / thiết bị</th><th>Tài nguyên yêu cầu</th><th>Mức MFA</th><th>Thời điểm yêu cầu</th><th>Trạng thái</th><th>Thao tác admin</th></tr></thead>
-      <tbody>${requests.map(request => `
+      <tbody>${lockedDevices.map(device => `
+        <tr>
+          <td><strong>${escapeHtml(device.username || "Không xác định")}</strong><span class="request-account">Thiết bị ${escapeHtml(device.device_id)}</span></td>
+          <td><span class="device-zone">Khóa do nhập sai mã</span></td>
+          <td><span class="trust-value">${escapeHtml(device.failed_attempts)}/3 lần sai</span></td>
+          <td class="request-time"><strong>${formatTime(device.locked_at)}</strong><span>Chờ admin gỡ khóa</span></td>
+          <td><span class="device-status device-status--unidentified">Thiết bị bị khóa</span></td>
+          <td><button class="button button--primary button--small" data-unlock-mfa-device="${escapeHtml(device.device_id)}">Gỡ khóa</button></td>
+        </tr>`).join("")}${requests.map(request => `
         <tr>
           <td><strong>${escapeHtml(request.username)}</strong><span class="request-account">${escapeHtml(request.role)} · ${escapeHtml(request.device_id)}</span></td>
           <td><span class="device-zone">${escapeHtml(request.resource_id)}</span></td>
@@ -377,6 +385,9 @@ function renderMfaRequests(requests) {
   });
   container.querySelectorAll("[data-revoke-mfa]").forEach(button => {
     button.addEventListener("click", () => revokeMfaCode(button.dataset.revokeMfa));
+  });
+  container.querySelectorAll("[data-unlock-mfa-device]").forEach(button => {
+    button.addEventListener("click", () => unlockMfaDevice(button.dataset.unlockMfaDevice));
   });
 }
 
@@ -458,7 +469,7 @@ async function refreshMfaRequests() {
   try {
     const response = await fetch("/api/mfa-requests", { headers: apiHeaders(), cache: "no-store" });
     const data = await parseResponse(response);
-    renderMfaRequests(data.requests ?? []);
+    renderMfaRequests(data.requests ?? [], data.locked_devices ?? []);
   } catch (error) {
     container.innerHTML = `<p class="empty-state">Không thể tải hàng chờ MFA: ${escapeHtml(error.message)}</p>`;
   }
@@ -553,6 +564,17 @@ async function revokeMfaCode(challengeId) {
   try {
     const response = await fetch(`/api/mfa-requests/${encodeURIComponent(challengeId)}`, {
       method: "DELETE", headers: apiHeaders()
+    });
+    await parseResponse(response);
+    refreshMfaRequests();
+  } catch (error) { alert(error.message); }
+}
+
+async function unlockMfaDevice(deviceId) {
+  if (!window.confirm("Gỡ khóa thiết bị này? Mã MFA cũ sẽ bị hủy và người dùng phải yêu cầu mã mới.")) return;
+  try {
+    const response = await fetch(`/api/mfa-device-locks/${encodeURIComponent(deviceId)}/unlock`, {
+      method: "POST", headers: apiHeaders()
     });
     await parseResponse(response);
     refreshMfaRequests();

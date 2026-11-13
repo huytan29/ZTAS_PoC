@@ -570,6 +570,33 @@ void handle_document_request(
         return;
     }
 
+    if (!request.has_header("X-Device-ID") ||
+        !request.has_header("X-Location-ID")) {
+        send_json(response, 400, {
+            {"error", "MISSING_ACCESS_CONTEXT"},
+            {"message", "X-Device-ID va X-Location-ID la bat buoc"}
+        });
+        return;
+    }
+
+    const std::string device_id =
+        request.get_header_value("X-Device-ID");
+
+    if (mfa_service.is_device_locked(device_id)) {
+        audit_logger.write({
+            {"event_type", "MFA_DEVICE_ACCESS_DENY"},
+            {"username", subject->username},
+            {"device_id", device_id},
+            {"reason_code", "MFA_DEVICE_LOCKED"},
+            {"severity", "critical"}
+        });
+        send_json(response, 423, {
+            {"error", "MFA_DEVICE_LOCKED"},
+            {"message", "Thiet bi bi khoa sau 3 lan nhap sai ma MFA. Chi admin moi co the go khoa."}
+        });
+        return;
+    }
+
     if (subject->auth_level > 1 &&
         (subject->mfa_challenge_id.empty() ||
          !mfa_service.is_challenge_active(
@@ -586,18 +613,6 @@ void handle_document_request(
         });
         return;
     }
-
-    if (!request.has_header("X-Device-ID") ||
-        !request.has_header("X-Location-ID")) {
-        send_json(response, 400, {
-            {"error", "MISSING_ACCESS_CONTEXT"},
-            {"message", "X-Device-ID va X-Location-ID la bat buoc"}
-        });
-        return;
-    }
-
-    const std::string device_id =
-        request.get_header_value("X-Device-ID");
 
     const std::string device_key =
         request.has_header("X-Device-Key")
@@ -848,6 +863,9 @@ int main() {
     const std::string enrollment_codes_file =
         env_or_default("ENROLLMENT_CODES_FILE", "data/enrollment_codes.json");
 
+    const std::string mfa_device_locks_file =
+        env_or_default("MFA_DEVICE_LOCKS_FILE", "data/mfa_device_locks.json");
+
     const std::string data_store_file =
         env_or_default("DATA_STORE_FILE", "data/ztas.db");
 
@@ -906,7 +924,7 @@ int main() {
         device_environment_directory,
         users_file
     );
-    MfaService mfa_service(token_secret);
+    MfaService mfa_service(token_secret, mfa_device_locks_file);
     const AccessService access_service(
         policy_client,
         audit_logger
@@ -2863,6 +2881,29 @@ int main() {
     ) {
         const auto subject = authenticate_request(request, auth_service, response);
         if (!subject.has_value()) return;
+        const std::string zone_id = request.matches[1];
+        const ProtectedResource* resource = resource_for_zone(zone_id);
+        if (resource == nullptr || !request.has_header("X-Device-ID") ||
+            !request.has_header("X-Location-ID")) {
+            send_json(response, 400, {{"error", "MISSING_ACCESS_CONTEXT"}});
+            return;
+        }
+
+        const std::string device_id = request.get_header_value("X-Device-ID");
+        if (mfa_service.is_device_locked(device_id)) {
+            audit_logger.write({
+                {"event_type", "MFA_DEVICE_ACCESS_DENY"},
+                {"username", subject->username},
+                {"device_id", device_id},
+                {"reason_code", "MFA_DEVICE_LOCKED"},
+                {"severity", "critical"}
+            });
+            send_json(response, 423, {
+                {"error", "MFA_DEVICE_LOCKED"},
+                {"message", "Thiet bi bi khoa sau 3 lan nhap sai ma MFA. Chi admin moi co the go khoa."}
+            });
+            return;
+        }
         if (subject->auth_level > 1 &&
             (subject->mfa_challenge_id.empty() ||
              !mfa_service.is_challenge_active(
@@ -2873,15 +2914,6 @@ int main() {
             });
             return;
         }
-        const std::string zone_id = request.matches[1];
-        const ProtectedResource* resource = resource_for_zone(zone_id);
-        if (resource == nullptr || !request.has_header("X-Device-ID") ||
-            !request.has_header("X-Location-ID")) {
-            send_json(response, 400, {{"error", "MISSING_ACCESS_CONTEXT"}});
-            return;
-        }
-
-        const std::string device_id = request.get_header_value("X-Device-ID");
         const std::string source_ip = request.remote_addr.empty()
             ? "unknown" : request.remote_addr;
         const bool managed_reader_session =
@@ -2992,7 +3024,19 @@ int main() {
                 {"code_revoked", item.code_revoked}
             });
         }
-        send_json(response, 200, {{"requests", requests}});
+        json locked_devices = json::array();
+        for (const auto& item : mfa_service.list_device_locks()) {
+            locked_devices.push_back({
+                {"device_id", item.device_id},
+                {"username", item.username},
+                {"locked_at", item.locked_at},
+                {"failed_attempts", item.failed_attempts}
+            });
+        }
+        send_json(response, 200, {
+            {"requests", requests},
+            {"locked_devices", locked_devices}
+        });
     });
 
     // Client chỉ thấy trạng thái yêu cầu của chính mình để biết khi nào admin
@@ -3049,6 +3093,36 @@ int main() {
         send_json(response, 200, {{"status", "REVOKED"}});
     });
 
+    // Sau ba lan sai ma, chi admin moi duoc go khoa. Viec go khoa xoa tat
+    // ca challenge cu cua thiet bi, nen nguoi dung bat buoc xin ma moi.
+    server.Post(R"(/api/mfa-device-locks/([^/]+)/unlock)", [
+        &auth_service,
+        &mfa_service,
+        &audit_logger
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto admin = authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) return;
+        const std::string device_id = request.matches[1];
+        if (!mfa_service.unlock_device(device_id)) {
+            send_json(response, 404, {{"error", "MFA_DEVICE_LOCK_NOT_FOUND"}});
+            return;
+        }
+        audit_logger.write({
+            {"event_type", "MFA_DEVICE_UNLOCKED_BY_ADMIN"},
+            {"actor", admin->username},
+            {"device_id", device_id},
+            {"reason_code", "ADMIN_UNLOCKED_MFA_DEVICE"},
+            {"severity", "high"}
+        });
+        send_json(response, 200, {
+            {"status", "UNLOCKED"},
+            {"message", "Da go khoa thiet bi. Nguoi dung phai yeu cau ma MFA moi."}
+        });
+    });
+
     server.Post(R"(/api/mfa-requests/([^/]+)/code)", [
         &auth_service,
         &mfa_service,
@@ -3099,6 +3173,18 @@ int main() {
             return;
         }
 
+        if (subject->reader_device_id.empty()) {
+            send_json(response, 400, {{"error", "READER_DEVICE_CONTEXT_REQUIRED"}});
+            return;
+        }
+        if (mfa_service.is_device_locked(subject->reader_device_id)) {
+            send_json(response, 423, {
+                {"error", "MFA_DEVICE_LOCKED"},
+                {"message", "Thiet bi bi khoa sau 3 lan nhap sai ma MFA. Chi admin moi co the go khoa."}
+            });
+            return;
+        }
+
         try {
             const json body = json::parse(request.body);
             const std::string challenge_id =
@@ -3107,30 +3193,48 @@ int main() {
             const std::string code =
                 body.value("mfa_code", "");
 
-            const auto next_auth_level =
+            const MfaVerificationResult verification =
                 mfa_service.verify_challenge(
                     *subject,
                     challenge_id,
                     code
                 );
 
-            if (!next_auth_level.has_value() ||
-                *next_auth_level <= subject->auth_level) {
+            if (verification.device_locked) {
+                audit_logger.write({
+                    {"event_type", "MFA_DEVICE_LOCKED_AFTER_FAILURES"},
+                    {"username", subject->username},
+                    {"device_id", verification.device_id},
+                    {"challenge_id", challenge_id},
+                    {"reason_code", "MFA_INVALID_CODE_THREE_TIMES"},
+                    {"severity", "critical"}
+                });
+                send_json(response, 423, {
+                    {"error", "MFA_DEVICE_LOCKED"},
+                    {"message", "Da nhap sai ma MFA 3 lan. Thiet bi da bi khoa va can admin go khoa."}
+                });
+                return;
+            }
+
+            if (!verification.verified ||
+                verification.granted_auth_level <= subject->auth_level) {
                 audit_logger.write({
                     {"event_type", "STEP_UP_DENY"},
                     {"username", subject->username},
                     {"challenge_id", challenge_id},
-                    {"reason_code", "INVALID_OR_EXPIRED_MFA_CHALLENGE"}
+                    {"reason_code", "INVALID_OR_EXPIRED_MFA_CHALLENGE"},
+                    {"remaining_attempts", verification.remaining_attempts}
                 });
 
                 send_json(response, 401, {
-                    {"error", "INVALID_OR_EXPIRED_MFA_CHALLENGE"}
+                    {"error", "INVALID_OR_EXPIRED_MFA_CHALLENGE"},
+                    {"remaining_attempts", verification.remaining_attempts}
                 });
                 return;
             }
 
             AccessSubject elevated_subject = *subject;
-            elevated_subject.auth_level = *next_auth_level;
+            elevated_subject.auth_level = verification.granted_auth_level;
             elevated_subject.mfa_challenge_id = challenge_id;
 
             audit_logger.write({

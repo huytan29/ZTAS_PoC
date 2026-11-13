@@ -10,6 +10,7 @@ data/ztas.db-wal
 data/pending_devices.json
 data/enrollment_codes.json
 data/device_credentials.json
+data/mfa_device_locks.json
 data/documents/**
 !data/documents/
 !data/documents/public/

@@ -5,11 +5,18 @@
 #include <openssl/hmac.h>
 #include <openssl/rand.h>
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <utility>
+
+using json = nlohmann::json;
+namespace fs = std::filesystem;
 
 namespace {
 
@@ -77,8 +84,14 @@ bool same_value(
 
 } // namespace
 
-MfaService::MfaService(std::string signing_secret)
-    : signing_secret_(std::move(signing_secret)) {}
+MfaService::MfaService(
+    std::string signing_secret,
+    std::string device_locks_file
+) : signing_secret_(std::move(signing_secret)),
+    device_locks_file_(std::move(device_locks_file)) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    load_device_locks_locked();
+}
 
 MfaChallenge MfaService::issue_challenge(
     const AccessSubject& subject,
@@ -123,6 +136,7 @@ MfaChallenge MfaService::issue_challenge(
         false,
         false,
         false,
+        0,
         ""
     };
 
@@ -206,7 +220,7 @@ std::optional<MfaApprovalRequest> MfaService::request_status(
     };
 }
 
-std::optional<int> MfaService::verify_challenge(
+MfaVerificationResult MfaService::verify_challenge(
     const AccessSubject& subject,
     const std::string& challenge_id,
     const std::string& code
@@ -221,7 +235,12 @@ std::optional<int> MfaService::verify_challenge(
         found->second.expires_at < now ||
         !found->second.code_ready || found->second.code_used ||
         found->second.code_revoked) {
-        return std::nullopt;
+        return {};
+    }
+
+    const std::string device_id = found->second.device_id;
+    if (device_locks_.find(device_id) != device_locks_.end()) {
+        return {false, true, 0, 0, device_id};
     }
 
     const std::string received = fingerprint(
@@ -232,12 +251,29 @@ std::optional<int> MfaService::verify_challenge(
     );
 
     if (!same_value(received, found->second.code_fingerprint)) {
-        return std::nullopt;
+        ++found->second.failed_attempts;
+        const int remaining_attempts = std::max(0, 3 - found->second.failed_attempts);
+        if (found->second.failed_attempts >= 3) {
+            device_locks_[device_id] = {
+                device_id,
+                subject.username,
+                now,
+                found->second.failed_attempts
+            };
+            // Huy tat ca challenge tren thiet bi de ma cu khong the duoc
+            // dung lai sau khi admin go khoa.
+            for (auto& [_, stored] : challenges_) {
+                if (stored.device_id == device_id) stored.code_revoked = true;
+            }
+            save_device_locks_locked();
+            return {false, true, 0, 0, device_id};
+        }
+        return {false, false, 0, remaining_attempts, device_id};
     }
 
     const int granted_level = found->second.required_auth_level;
     found->second.code_used = true;
-    return granted_level;
+    return {true, false, granted_level, 3, device_id};
 }
 
 void MfaService::clear_user_session(const std::string& username) {
@@ -269,7 +305,39 @@ bool MfaService::is_challenge_active(
     const auto found = challenges_.find(challenge_id);
     return found != challenges_.end() &&
         found->second.username == username &&
-        found->second.code_used && !found->second.code_revoked;
+        found->second.code_used && !found->second.code_revoked &&
+        device_locks_.find(found->second.device_id) == device_locks_.end();
+}
+
+bool MfaService::is_device_locked(const std::string& device_id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return device_locks_.find(device_id) != device_locks_.end();
+}
+
+std::vector<MfaDeviceLock> MfaService::list_device_locks() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::vector<MfaDeviceLock> locks;
+    locks.reserve(device_locks_.size());
+    for (const auto& [_, value] : device_locks_) locks.push_back(value);
+    std::sort(locks.begin(), locks.end(), [](const auto& left, const auto& right) {
+        return left.locked_at > right.locked_at;
+    });
+    return locks;
+}
+
+bool MfaService::unlock_device(const std::string& device_id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (device_locks_.erase(device_id) == 0) return false;
+    // Bat buoc tao challenge moi sau khi admin go khoa; ma cu khong duoc
+    // phep tiep tuc dung du chi biet ma.
+    for (auto iterator = challenges_.begin(); iterator != challenges_.end();) {
+        if (iterator->second.device_id == device_id) {
+            iterator = challenges_.erase(iterator);
+        } else {
+            ++iterator;
+        }
+    }
+    return save_device_locks_locked();
 }
 
 void MfaService::remove_expired_locked(long long now) {
@@ -280,5 +348,60 @@ void MfaService::remove_expired_locked(long long now) {
         } else {
             ++iterator;
         }
+    }
+}
+
+void MfaService::load_device_locks_locked() {
+    device_locks_.clear();
+    if (device_locks_file_.empty() || !fs::exists(device_locks_file_)) return;
+    try {
+        std::ifstream file(device_locks_file_);
+        const json stored = json::parse(file);
+        for (const auto& item : stored.value("locks", json::array())) {
+            const std::string device_id = item.value("device_id", "");
+            if (device_id.empty()) continue;
+            device_locks_[device_id] = {
+                device_id,
+                item.value("username", ""),
+                item.value("locked_at", 0LL),
+                item.value("failed_attempts", 3)
+            };
+        }
+    } catch (const std::exception&) {
+        // Tep lock loi duoc coi la su co van hanh va can duoc kiem tra trong
+        // audit/backup khi trien khai that.
+    }
+}
+
+bool MfaService::save_device_locks_locked() const {
+    if (device_locks_file_.empty()) return false;
+    try {
+        const fs::path path(device_locks_file_);
+        fs::create_directories(path.parent_path());
+        json stored = {{"schema_version", 1}, {"locks", json::array()}};
+        for (const auto& [_, value] : device_locks_) {
+            stored["locks"].push_back({
+                {"device_id", value.device_id},
+                {"username", value.username},
+                {"locked_at", value.locked_at},
+                {"failed_attempts", value.failed_attempts}
+            });
+        }
+        const fs::path temporary = path.string() + ".tmp";
+        {
+            std::ofstream file(temporary);
+            if (!file) return false;
+            file << stored.dump(2) << '\n';
+        }
+        std::error_code error;
+        fs::rename(temporary, path, error);
+        if (error) {
+            fs::remove(path, error);
+            error.clear();
+            fs::rename(temporary, path, error);
+        }
+        return !error;
+    } catch (const std::exception&) {
+        return false;
     }
 }

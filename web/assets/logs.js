@@ -21,6 +21,8 @@ const reasonText = {
   DEVICE_TRUST_INSUFFICIENT: "Độ tin cậy thiết bị chưa đủ",
   LOCATION_LEVEL_INSUFFICIENT: "Mức tin cậy vùng mạng chưa đủ",
   AUTH_LEVEL_INSUFFICIENT: "Cần xác thực MFA ở cấp cao hơn",
+  MFA_DEVICE_LOCKED: "Thiết bị bị khóa MFA sau 3 lần nhập sai mã",
+  MFA_INVALID_CODE_THREE_TIMES: "Nhập sai mã MFA quá số lần cho phép",
   ACCESS_GRANTED: "Policy cho phép truy cập",
   OPA_UNAVAILABLE: "Không liên lạc được Policy Engine"
 };
@@ -36,6 +38,9 @@ const eventTitles = {
   STEP_UP_PERMIT: "Đã nâng cấp xác thực MFA",
   STEP_UP_DENY: "Xác thực MFA không thành công",
   MFA_CHALLENGE_ISSUED: "Đã tạo yêu cầu MFA",
+  MFA_DEVICE_LOCKED_AFTER_FAILURES: "Đã khóa thiết bị do sai mã MFA 3 lần",
+  MFA_DEVICE_ACCESS_DENY: "Từ chối đọc vì thiết bị đang bị khóa MFA",
+  MFA_DEVICE_UNLOCKED_BY_ADMIN: "Admin đã gỡ khóa MFA cho thiết bị",
   AUTHZ_ERROR: "Lỗi xác thực truy cập",
   DEVICE_ENROLLED: "Đã cấp phát thiết bị mới",
   DEVICE_REENROLLED: "Đã đăng ký lại thiết bị",

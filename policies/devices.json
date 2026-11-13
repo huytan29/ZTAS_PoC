@@ -61,7 +61,7 @@
       ],
       "device_name": "MacIntel · macos",
       "device_type": "macos",
-      "enrollment_profile": "manual",
+      "enrollment_profile": "managed-vm",
       "lifecycle_status": "ACTIVE",
       "location_id": "lab-network",
       "registered": true,

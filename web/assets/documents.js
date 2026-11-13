@@ -168,7 +168,15 @@ async function stepUp(data) {
     body: JSON.stringify({ challenge_id: data.challenge_id, mfa_code: code })
   });
   const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || "Xác thực bổ sung không thành công");
+  if (!response.ok) {
+    if (result.error === "MFA_DEVICE_LOCKED") {
+      throw new Error("Thiết bị đã bị khóa do nhập sai mã MFA 3 lần. Chờ admin gỡ khóa, sau đó yêu cầu mã mới.");
+    }
+    if (Number.isInteger(result.remaining_attempts)) {
+      throw new Error(`Mã Step-Up không đúng. Còn ${result.remaining_attempts} lần thử trước khi thiết bị bị khóa.`);
+    }
+    throw new Error(result.error || "Xác thực bổ sung không thành công");
+  }
   token = result.access_token;
   sessionStorage.setItem("ztas_document_token", token);
 }
