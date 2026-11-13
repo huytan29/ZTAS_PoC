@@ -43,12 +43,12 @@
       "registered": false,
       "trust_level": 3
     },
-    "windows-laptop-01": {
+    "web-1794541608661cc17e4a7eb1": {
       "allowed_ip_addresses": [
-        "192.168.2.1"
+        "192.168.2.2"
       ],
-      "device_name": "Windows Laptop 01",
-      "device_type": "windows",
+      "device_name": "Linux x86_64 · ubuntu",
+      "device_type": "ubuntu",
       "enrollment_profile": "trusted",
       "lifecycle_status": "ACTIVE",
       "location_id": "campus-network",

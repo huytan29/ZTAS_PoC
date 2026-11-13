@@ -13,6 +13,8 @@ struct MfaChallenge {
     int required_auth_level = 2;
     long long expires_at = 0;
     bool code_ready = false;
+    bool already_requested = false;
+    bool already_used = false;
 };
 
 struct MfaApprovalRequest {
@@ -25,6 +27,7 @@ struct MfaApprovalRequest {
     long long requested_at = 0;
     long long expires_at = 0;
     bool code_ready = false;
+    bool code_used = false;
 };
 
 class MfaService {
@@ -38,8 +41,8 @@ public:
         const std::string& resource_id
     );
 
-    // Mã chỉ được admin gán sau khi xem hàng chờ. Quy tắc: ít nhất sáu chữ
-    // số, một chữ hoa và một ký tự đặc biệt.
+    // Mã chỉ được admin gán sau khi xem hàng chờ. Quy tắc: tối thiểu sáu ký
+    // tự, một chữ hoa và một ký tự đặc biệt (không tính khoảng trắng).
     bool issue_admin_code(
         const std::string& challenge_id,
         const std::string& code
@@ -58,6 +61,10 @@ public:
         const std::string& code
     );
 
+    // Dang xuat se xoa trang thai MFA cua tai khoan, cho phep tao mot yeu
+    // cau moi o phien dang nhap sau.
+    void clear_user_session(const std::string& username);
+
 private:
     struct StoredChallenge {
         std::string username;
@@ -68,6 +75,7 @@ private:
         long long requested_at = 0;
         long long expires_at = 0;
         bool code_ready = false;
+        bool code_used = false;
         std::string code_fingerprint;
     };
 

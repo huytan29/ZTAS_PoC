@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZTAS | Kết nối thiết bị</title>
+  <link rel="stylesheet" href="/assets/admin-login.css">
+  <script defer src="/assets/connect-device.js?v=2"></script>
+</head>
+<body>
+  <main class="login-shell">
+    <section class="login-card" aria-labelledby="connect-title">
+      <div class="login-brand"><span>◆</span>PoC PTIT Security Console</div>
+      <p class="eyebrow">ĐĂNG KÝ THIẾT BỊ</p>
+      <h1 id="connect-title">Kết nối máy này</h1>
+      <p class="login-intro">Nhập thông tin tài khoản và Account Key do quản trị viên cấp. Sau khi được duyệt, hệ thống tự đăng nhập và mở Tài liệu.</p>
+
+      <form id="connect-device-form">
+        <label>Tên đăng nhập
+          <input name="username" autocomplete="username" required autofocus>
+        </label>
+        <label>Mật khẩu
+          <input name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <label>Account Key
+          <input name="account_key" type="password" autocomplete="off" spellcheck="false" required>
+        </label>
+        <p class="message" id="connect-device-message" role="alert"></p>
+        <button type="submit">Gửi yêu cầu kết nối</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

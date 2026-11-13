@@ -87,15 +87,32 @@ MfaChallenge MfaService::issue_challenge(
     const std::string& resource_id
 ) {
     const int target_level = std::clamp(required_auth_level, 2, 5);
-    const std::string challenge_id = random_challenge_id();
     const long long requested_at = current_epoch();
-    const long long expires_at = requested_at + 600;
+    std::lock_guard<std::mutex> lock(mutex_);
+    remove_expired_locked(requested_at);
 
-    if (challenge_id.empty()) {
-        return {"", target_level, 0, false};
+    // Mot tai khoan chi co mot yeu cau ma trong suot phien. Neu nguoi dung
+    // bam lai vao cung/khac tai lieu, tra ve yeu cau cu thay vi sinh ma moi.
+    for (const auto& [existing_id, stored] : challenges_) {
+        if (stored.username == subject.username) {
+            return {
+                existing_id,
+                stored.required_auth_level,
+                stored.expires_at,
+                stored.code_ready,
+                true,
+                stored.code_used
+            };
+        }
     }
 
-    const StoredChallenge stored{
+    const std::string challenge_id = random_challenge_id();
+    // Dong bo voi phien dang nhap 15 phut. Trong thoi gian nay, mot tai
+    // khoan khong the sinh them yeu cau ma chi vi bam lai tai lieu.
+    const long long expires_at = requested_at + 900;
+    if (challenge_id.empty()) return {"", target_level, 0, false};
+
+    challenges_[challenge_id] = StoredChallenge{
         subject.username,
         subject.role,
         device_id,
@@ -104,14 +121,9 @@ MfaChallenge MfaService::issue_challenge(
         requested_at,
         expires_at,
         false,
+        false,
         ""
     };
-
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        remove_expired_locked(current_epoch());
-        challenges_[challenge_id] = stored;
-    }
 
     return {
         challenge_id,
@@ -122,15 +134,14 @@ MfaChallenge MfaService::issue_challenge(
 }
 
 bool MfaService::valid_admin_code(const std::string& code) {
-    int digit_count = 0;
     bool has_uppercase = false;
     bool has_special = false;
     for (const unsigned char character : code) {
-        digit_count += std::isdigit(character) ? 1 : 0;
         has_uppercase = has_uppercase || std::isupper(character);
-        has_special = has_special || !std::isalnum(character);
+        has_special = has_special ||
+            (!std::isalnum(character) && !std::isspace(character));
     }
-    return digit_count >= 6 && has_uppercase && has_special;
+    return code.size() >= 6 && has_uppercase && has_special;
 }
 
 bool MfaService::issue_admin_code(
@@ -143,7 +154,7 @@ bool MfaService::issue_admin_code(
     const long long now = current_epoch();
     remove_expired_locked(now);
     const auto found = challenges_.find(challenge_id);
-    if (found == challenges_.end()) return false;
+    if (found == challenges_.end() || found->second.code_used) return false;
 
     found->second.code_fingerprint = fingerprint(
         challenge_id,
@@ -152,7 +163,6 @@ bool MfaService::issue_admin_code(
         signing_secret_
     );
     found->second.code_ready = true;
-    found->second.expires_at = now + 120;
     return true;
 }
 
@@ -165,7 +175,8 @@ std::vector<MfaApprovalRequest> MfaService::list_requests() {
         requests.push_back({
             challenge_id, stored.username, stored.role, stored.device_id,
             stored.resource_id, stored.required_auth_level,
-            stored.requested_at, stored.expires_at, stored.code_ready
+            stored.requested_at, stored.expires_at, stored.code_ready,
+            stored.code_used
         });
     }
     std::sort(requests.begin(), requests.end(), [](const auto& left, const auto& right) {
@@ -188,7 +199,8 @@ std::optional<MfaApprovalRequest> MfaService::request_status(
     return MfaApprovalRequest{
         challenge_id, stored.username, stored.role, stored.device_id,
         stored.resource_id, stored.required_auth_level,
-        stored.requested_at, stored.expires_at, stored.code_ready
+        stored.requested_at, stored.expires_at, stored.code_ready,
+        stored.code_used
     };
 }
 
@@ -205,7 +217,7 @@ std::optional<int> MfaService::verify_challenge(
     if (found == challenges_.end() ||
         found->second.username != subject.username ||
         found->second.expires_at < now ||
-        !found->second.code_ready) {
+        !found->second.code_ready || found->second.code_used) {
         return std::nullopt;
     }
 
@@ -221,8 +233,19 @@ std::optional<int> MfaService::verify_challenge(
     }
 
     const int granted_level = found->second.required_auth_level;
-    challenges_.erase(found);
+    found->second.code_used = true;
     return granted_level;
+}
+
+void MfaService::clear_user_session(const std::string& username) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (auto iterator = challenges_.begin(); iterator != challenges_.end();) {
+        if (iterator->second.username == username) {
+            iterator = challenges_.erase(iterator);
+        } else {
+            ++iterator;
+        }
+    }
 }
 
 void MfaService::remove_expired_locked(long long now) {

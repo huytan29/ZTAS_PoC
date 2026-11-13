@@ -164,5 +164,6 @@ rồi nạp tệp; chọn lại cùng tên sẽ thay thế tệp cũ trong chín
   trong `runtime/ztas.env`. Không chạy nhiều instance ZTAS cùng ghi vào một thư
   mục mạng; hãy để một instance trung tâm ghi log.
 
-Xem [hướng dẫn cấp phát thiết bị](docs/device-enrollment.md) và
+Xem [kết nối thiết bị bằng Account Key](docs/account-key-device-connection.md),
+[hướng dẫn cấp phát thiết bị cũ](docs/device-enrollment.md) và
 [kết nối từ VM/Docker](docs/vmware-docker-device-access.md).

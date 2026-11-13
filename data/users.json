@@ -2,15 +2,6 @@
   "users": [
     {
       "allowed_device_ids": [
-        "macbook-lab-01"
-      ],
-      "expires_at": 0,
-      "password_hash": "DAN_HASH_MANAGER_VAO_DAY",
-      "role": "manager",
-      "username": "manager"
-    },
-    {
-      "allowed_device_ids": [
         "*"
       ],
       "expires_at": 0,
@@ -19,22 +10,15 @@
       "username": "admin"
     },
     {
+      "account_key_hash": "pbkdf2_sha256$200000$1e10a2c8d405dfd86ea8805c1cdaf3d2$e9c378de9ab532a1179cb15e2c00efcdde3faa115b9e3f1ba3aefd762c09e1e1",
+      "account_key_issued_at": 1794541587,
       "allowed_device_ids": [
-        "ubuntu-vm-01"
+        "web-1794541608661cc17e4a7eb1"
       ],
       "expires_at": 0,
-      "password_hash": "pbkdf2_sha256$200000$a0866a39b5a33e9bc7d3a00256e4f915$ad251842d73566cc9c66df167f283960fdb471441594f48457819d22543c5097",
-      "role": "employee",
-      "username": "ubuntu1"
-    },
-    {
-      "allowed_device_ids": [
-        "windows-laptop-01"
-      ],
-      "expires_at": 0,
-      "password_hash": "pbkdf2_sha256$200000$73fbf0e046e3f9acf1cf01e86b0f04bf$77f9083239fb72a6978f107128e0d7973ee156d03faa573ee934fe3ae699bf31",
+      "password_hash": "pbkdf2_sha256$200000$932f79f264bc8ac847c9afd25a66d5ee$dc601cad9ccd38c53346acf09ee08e556b2aa3ef2193d27851209bce07f51149",
       "role": "engineer",
-      "username": "windows1"
+      "username": "ubuntu1"
     }
   ]
 }

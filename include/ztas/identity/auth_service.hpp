@@ -18,6 +18,16 @@ struct UserProvisioningResult {
     std::string message;
     std::string username;
     std::string role;
+    // Chi tra ve khi tao/cap lai; khong bao gio luu dang ro.
+    std::string account_key;
+};
+
+struct AccountKeyIssueResult {
+    bool success = false;
+    std::string code;
+    std::string message;
+    std::string username;
+    std::string account_key;
 };
 
 struct UserDeletionResult {
@@ -47,6 +57,14 @@ public:
         const std::string& password
     ) const;
 
+    // Dung duy nhat trong luong may moi gui yeu cau ket noi. Ca mat khau va
+    // Account Key deu phai dung; key chi duoc luu duoi dang PBKDF2 hash.
+    std::optional<AccessSubject> authenticate_device_enrollment(
+        const std::string& username,
+        const std::string& password,
+        const std::string& account_key
+    ) const;
+
     std::string issue_token(
         const AccessSubject& subject
     ) const;
@@ -72,6 +90,11 @@ public:
     UserProvisioningResult create_user(
         const std::string& username,
         const std::string& role
+    ) const;
+
+    // Cap lai Account Key cho tai khoan co san va vo hieu hoa key cu ngay lap tuc.
+    AccountKeyIssueResult issue_account_key(
+        const std::string& username
     ) const;
 
     // Xoa vinh vien tai khoan va vo hieu hoa ngay token cua tai khoan do.

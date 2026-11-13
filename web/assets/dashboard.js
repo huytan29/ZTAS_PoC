@@ -29,7 +29,6 @@ let pendingAdminAction = null;
 let deviceToRevoke = null;
 let deviceToDelete = null;
 let issuedCredential = null;
-let issuedEnrollmentCode = "";
 let assignableUsers = [];
 let weatherLoading = false;
 let deviceViewSignature = "";
@@ -311,7 +310,7 @@ function renderConnectionRequests(requests) {
       <thead><tr><th>Thiết bị yêu cầu</th><th>Profile / tài khoản</th><th>Vùng mạng</th><th>IP nguồn</th><th>Lần đầu / gần nhất</th><th>Thông tin máy khách</th><th>Thao tác</th></tr></thead>
       <tbody>${requests.map(request => `
         <tr>
-          <td><strong>${escapeHtml(request.device_name || request.device_id)}</strong><span class="request-state"><i class="status-dot status-dot--warning"></i>${request.enrollment_verified ? "Mã đăng ký hợp lệ · chờ duyệt" : "Chờ phân loại"}</span><span class="request-id">${escapeHtml(request.device_id)} · ${escapeHtml(request.device_type || "unknown")}</span></td>
+          <td><strong>${escapeHtml(request.device_name || request.device_id)}</strong><span class="request-state"><i class="status-dot status-dot--warning"></i>${request.enrollment_profile === "account-key" ? "Tài khoản + Account Key hợp lệ · chờ duyệt" : request.enrollment_verified ? "Thông tin đăng ký hợp lệ · chờ duyệt" : "Chờ phân loại"}</span><span class="request-id">${escapeHtml(request.device_id)} · ${escapeHtml(request.device_type || "unknown")}</span></td>
           <td><strong>${escapeHtml(request.enrollment_profile || "manual")}</strong><span class="request-account">${escapeHtml(request.requested_username || "Chưa gán tài khoản")}</span></td>
           <td><span class="device-zone">${escapeHtml(request.location_id)}</span></td>
           <td><span class="device-zone">${escapeHtml(request.source_ip)}</span></td>
@@ -356,9 +355,11 @@ function renderMfaRequests(requests) {
           <td><span class="device-zone">${escapeHtml(request.resource_id)}</span></td>
           <td><span class="trust-value">Cấp ${escapeHtml(request.required_auth_level)}</span></td>
           <td class="request-time"><strong>${formatTime(request.requested_at)}</strong><span>Hết hạn: ${formatTime(request.expires_at)}</span></td>
-          <td><span class="device-status device-status--${request.code_ready ? "identified" : "step-up"}">${request.code_ready ? "Đã cấp mã" : "Chờ admin"}</span></td>
-          <td>${request.code_ready
-            ? '<span class="account-empty">Đang chờ người dùng nhập mã</span>'
+          <td><span class="device-status device-status--${request.code_used ? "identified" : request.code_ready ? "identified" : "step-up"}">${request.code_used ? "Đã dùng trong phiên" : request.code_ready ? "Đã cấp mã" : "Chờ admin"}</span></td>
+          <td>${request.code_used
+            ? '<span class="account-empty">Đăng xuất để yêu cầu mã mới</span>'
+            : request.code_ready
+            ? '<span class="account-empty">Đã thông báo cho máy người dùng</span>'
             : `<button class="button button--primary button--small" data-issue-mfa-code="${escapeHtml(request.challenge_id)}" data-mfa-user="${escapeHtml(request.username)}" data-mfa-resource="${escapeHtml(request.resource_id)}">Tạo mã</button>`}</td>
         </tr>`).join("")}</tbody>
     </table>`;
@@ -539,8 +540,7 @@ function openMfaCodeDialog(challengeId, username, resourceId) {
 }
 
 function validAdminMfaCode(code) {
-  return (code.match(/\d/g) ?? []).length >= 6 &&
-    /[A-Z]/.test(code) && /[^A-Za-z0-9]/.test(code);
+  return code.length >= 6 && /[A-Z]/.test(code) && /[^A-Za-z0-9\s]/.test(code);
 }
 
 async function loadAssignableUsers(selector) {
@@ -596,16 +596,6 @@ async function openEnrollDialog(
     form.elements.assigned_username.value = assignedUsername;
   }
   showDialog("enroll-device-dialog");
-}
-
-async function openEnrollmentCodeDialog() {
-  const form = document.querySelector("#issue-enrollment-code-form");
-  form.reset();
-  form.elements.profile.value = "managed-vm";
-  form.elements.lifetime_seconds.value = "600";
-  document.querySelector("#issue-enrollment-code-message").textContent = "";
-  await loadAssignableUsers(form.elements.assigned_username);
-  showDialog("issue-enrollment-code-dialog");
 }
 
 function openRevokeDialog(deviceId) {
@@ -675,10 +665,6 @@ async function parseResponse(response) {
 
 document.querySelector("#add-device-button").addEventListener("click", () => {
   requireAdmin(() => openEnrollDialog());
-});
-
-document.querySelector("#issue-enrollment-code-button").addEventListener("click", () => {
-  requireAdmin(() => openEnrollmentCodeDialog());
 });
 
 document.querySelector("#mfa-admin-login-button").addEventListener("click", () => {
@@ -773,40 +759,13 @@ document.querySelector("#mac-capture-toggle").addEventListener("change", event =
   setMacCaptureEnabled(desired);
 });
 
-document.querySelector("#issue-enrollment-code-form").addEventListener("submit", async event => {
-  event.preventDefault();
-  const form = event.currentTarget;
-  const message = document.querySelector("#issue-enrollment-code-message");
-  message.textContent = "Đang tạo mã đăng ký…";
-  try {
-    const response = await fetch("/api/enrollment-codes", {
-      method: "POST",
-      headers: apiHeaders(),
-      body: JSON.stringify({
-        profile: form.elements.profile.value,
-        assigned_username: form.elements.assigned_username.value,
-        lifetime_seconds: Number(form.elements.lifetime_seconds.value)
-      })
-    });
-    const data = await parseResponse(response);
-    issuedEnrollmentCode = data.enrollment_code;
-    document.querySelector("#issued-enrollment-code").value = data.enrollment_code;
-    document.querySelector("#enrollment-code-result-text").textContent =
-      `Mã có hiệu lực đến ${formatTime(data.expires_at)}. Profile ${data.profile.label}, gán cho ${data.assigned_username}.`;
-    closeDialog("issue-enrollment-code-dialog");
-    showDialog("enrollment-code-result-dialog");
-  } catch (error) {
-    message.textContent = error.message;
-  }
-});
-
 document.querySelector("#issue-mfa-code-form").addEventListener("submit", async event => {
   event.preventDefault();
   const form = event.currentTarget;
   const message = document.querySelector("#issue-mfa-code-message");
   const code = form.elements.code.value.trim();
   if (!validAdminMfaCode(code)) {
-    message.textContent = "Mã cần ít nhất 6 chữ số, 1 chữ hoa và 1 ký tự đặc biệt.";
+    message.textContent = "Mã cần tối thiểu 6 ký tự, 1 chữ hoa và 1 ký tự đặc biệt.";
     return;
   }
   message.textContent = "Đang cấp mã…";
@@ -867,12 +826,6 @@ document.querySelector("#copy-device-key").addEventListener("click", async () =>
   document.querySelector("#copy-device-key").textContent = "Đã sao chép";
 });
 
-document.querySelector("#copy-enrollment-code").addEventListener("click", async () => {
-  if (!issuedEnrollmentCode) return;
-  await navigator.clipboard.writeText(issuedEnrollmentCode);
-  document.querySelector("#copy-enrollment-code").textContent = "Đã sao chép";
-});
-
 document.querySelector("#download-device-env").addEventListener("click", () => {
   if (!issuedCredential) return;
   const content = [
@@ -896,12 +849,6 @@ document.querySelector("#device-key-dialog").addEventListener("close", () => {
   issuedCredential = null;
   document.querySelector("#issued-device-key").value = "";
   document.querySelector("#copy-device-key").textContent = "Sao chép key";
-});
-
-document.querySelector("#enrollment-code-result-dialog").addEventListener("close", () => {
-  issuedEnrollmentCode = "";
-  document.querySelector("#issued-enrollment-code").value = "";
-  document.querySelector("#copy-enrollment-code").textContent = "Sao chép mã";
 });
 
 document.querySelector("#logout-button").addEventListener("click", async () => {

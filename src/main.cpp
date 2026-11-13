@@ -637,13 +637,22 @@ void handle_document_request(
             return;
         }
 
-        audit_logger.write({
-            {"event_type", "MFA_CHALLENGE_ISSUED"},
-            {"username", subject->username},
-            {"challenge_id", challenge.challenge_id},
-            {"required_auth_level", challenge.required_auth_level},
-            {"expires_at", challenge.expires_at}
-        });
+        if (challenge.already_used) {
+            body["mfa_status"] = "SESSION_CODE_ALREADY_USED";
+            body["message"] = "Ma Step-Up da duoc dung trong phien nay. Dang xuat roi dang nhap lai de gui yeu cau ma moi.";
+            send_json(response, 403, body);
+            return;
+        }
+
+        if (!challenge.already_requested) {
+            audit_logger.write({
+                {"event_type", "MFA_CHALLENGE_ISSUED"},
+                {"username", subject->username},
+                {"challenge_id", challenge.challenge_id},
+                {"required_auth_level", challenge.required_auth_level},
+                {"expires_at", challenge.expires_at}
+            });
+        }
 
         body["challenge_id"] = challenge.challenge_id;
         body["expires_at"] = challenge.expires_at;
@@ -761,6 +770,9 @@ int main() {
 
     const std::string admin_login_file =
         env_or_default("ADMIN_LOGIN_FILE", "web/admin-login.html");
+
+    const std::string connect_device_file =
+        env_or_default("CONNECT_DEVICE_FILE", "web/connect-device.html");
 
     const std::string devices_policy_file =
         env_or_default("DEVICES_POLICY_FILE", "policies/devices.json");
@@ -905,6 +917,15 @@ int main() {
 
     server.Get("/login", serve_login_page);
     server.Get("/admin/login", serve_login_page);
+
+    // Trang cong khai dung tren may moi. Trang nay khong tao phien dang nhap
+    // va chi gui yeu cau cho admin sau khi xac minh Account Key.
+    server.Get("/connect-device", [&connect_device_file](
+        const httplib::Request&,
+        httplib::Response& response
+    ) {
+        send_text_file(response, connect_device_file, "text/html; charset=utf-8");
+    });
 
     server.Get("/dashboard", [
         &auth_service,
@@ -1179,6 +1200,17 @@ int main() {
         send_text_file(
             response,
             web_assets_directory + "/admin-login.js",
+            "application/javascript; charset=utf-8"
+        );
+    });
+
+    server.Get("/assets/connect-device.js", [&web_assets_directory](
+        const httplib::Request&,
+        httplib::Response& response
+    ) {
+        send_text_file(
+            response,
+            web_assets_directory + "/connect-device.js",
             "application/javascript; charset=utf-8"
         );
     });
@@ -1615,6 +1647,9 @@ int main() {
 
             send_json(response, 201, {
                 {"message", result.message},
+                // Account Key chi duoc tra ve tai thoi diem tao tai khoan.
+                // users.json chi chua PBKDF2 hash cua key nay.
+                {"account_key", result.account_key},
                 {"user", {
                     {"username", result.username},
                     {"role", result.role}
@@ -1623,6 +1658,40 @@ int main() {
         } catch (const json::exception&) {
             send_json(response, 400, {{"error", "INVALID_JSON"}});
         }
+    });
+
+    // Cap lai Account Key khi key cu da lo hoac tai khoan cu duoc dung de
+    // dang ky mot thiet bi moi. Chi admin co the thuc hien thao tac nay.
+    server.Post(R"(/api/users/([^/]+)/account-key)", [
+        &auth_service,
+        &audit_logger
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto admin = authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) return;
+
+        const std::string username = request.matches[1];
+        const AccountKeyIssueResult result = auth_service.issue_account_key(username);
+        if (!result.success) {
+            const int status = result.code == "USER_NOT_FOUND" ? 404 : 400;
+            send_json(response, status, {{"error", result.code}, {"message", result.message}});
+            return;
+        }
+
+        audit_logger.write({
+            {"event_type", "ACCOUNT_KEY_ISSUED"},
+            {"actor", admin->username},
+            {"username", result.username},
+            {"reason_code", "ACCOUNT_KEY_ROTATED"},
+            {"severity", "high"}
+        });
+        send_json(response, 201, {
+            {"message", result.message},
+            {"username", result.username},
+            {"account_key", result.account_key}
+        });
     });
 
     server.Delete("/api/users", [
@@ -1911,11 +1980,10 @@ int main() {
         }
     });
 
-    // May moi co the dung ma dang ky mot lan hoac token tai khoan de tu khai
-    // bao. Ca hai cach deu chi tao PENDING_APPROVAL, khong cap quyen data.
+    // May moi phai chung minh dong thoi tai khoan, mat khau va Account Key
+    // do admin cap. Yeu cau chi tao PENDING_APPROVAL, khong cap quyen data.
     server.Post("/api/connection-requests", [
         &auth_service,
-        &enrollment_code_service,
         &discovery_service,
         &device_registry,
         &device_security_settings,
@@ -1936,48 +2004,66 @@ int main() {
                 return;
             }
 
-            // Yeu cau ket noi la thao tac mot lan. Sau khi admin da cap
-            // Device Key, client co the goi lai endpoint nay do retry/auto
-            // start nhung khong duoc sinh them yeu cau cho phan duyet.
-            if (device_registry.is_active_registered(device_id)) {
-                discovery_service.resolve(device_id);
-                send_json(response, 200, {
-                    {"status", "ALREADY_APPROVED"},
-                    {"device_id", device_id},
-                    {"message", "Thiet bi da duoc cap phat; khong can gui lai yeu cau ket noi"}
-                });
-                return;
-            }
-
             std::string requested_username;
             std::string enrollment_profile = "manual";
             bool enrollment_verified = false;
             int profile_trust = 0;
             std::string profile_location = location_id;
-            const std::string enrollment_code = body.value("enrollment_code", "");
+            const std::string account_username = body.value("username", "");
+            const std::string account_password = body.value("password", "");
+            const std::string account_key = body.value("account_key", "");
+            if (account_username.empty() || account_password.empty() ||
+                account_key.empty()) {
+                send_json(response, 401, {
+                    {"error", "ACCOUNT_ENROLLMENT_CREDENTIALS_REQUIRED"},
+                    {"message", "May moi can tai khoan, mat khau va Account Key"}
+                });
+                return;
+            }
 
-            if (!enrollment_code.empty()) {
-                const EnrollmentCodeConsumeResult code_result =
-                    enrollment_code_service.consume(enrollment_code);
-                if (!code_result.success) {
-                    send_json(response, 403, {
-                        {"error", code_result.code},
-                        {"message", code_result.message}
-                    });
-                    return;
-                }
-                requested_username = code_result.assigned_username;
-                enrollment_profile = code_result.profile.id;
-                enrollment_verified = true;
-                profile_trust = code_result.profile.trust_level;
-                profile_location = code_result.profile.location_id;
-            } else {
-                const auto subject =
-                    authenticate_request(request, auth_service, response);
-                if (!subject.has_value()) {
-                    return;
-                }
-                requested_username = subject->username;
+            const auto subject = auth_service.authenticate_device_enrollment(
+                account_username, account_password, account_key
+            );
+            if (!subject.has_value()) {
+                audit_logger.write({
+                    {"event_type", "DEVICE_CONNECTION_DENY"},
+                    {"device_id", device_id},
+                    {"username", account_username},
+                    {"source_ip", request.remote_addr.empty() ? "unknown" : request.remote_addr},
+                    {"reason_code", "INVALID_ACCOUNT_ENROLLMENT_CREDENTIALS"},
+                    {"severity", "high"}
+                });
+                send_json(response, 401, {
+                    {"error", "INVALID_ACCOUNT_ENROLLMENT_CREDENTIALS"},
+                    {"message", "Tai khoan, mat khau hoac Account Key khong dung"}
+                });
+                return;
+            }
+            requested_username = subject->username;
+            enrollment_profile = "account-key";
+            enrollment_verified = true;
+
+            // Sau khi da xac minh ca ba thong tin, tao phien HTTP ngan han
+            // cho trang ket noi. Phien nay chua the doc du lieu khi thiet bi
+            // dang cho duyet; no chi giup trinh duyet tu dang nhap ngay khi
+            // admin cap phat thanh cong ma khong can nhap lai thong tin.
+            const std::string enrollment_session = auth_service.issue_token(*subject);
+            response.set_header(
+                "Set-Cookie",
+                "ZTAS_SESSION_TOKEN=" + enrollment_session +
+                    "; Path=/; Max-Age=900; HttpOnly; SameSite=Strict"
+            );
+
+            // Yeu cau ket noi la thao tac mot lan. Kiem tra nay dat sau
+            // xac minh tai khoan de khong lo trang thai cua mot device_id.
+            if (device_registry.is_active_registered(device_id)) {
+                discovery_service.resolve(device_id);
+                send_json(response, 200, {
+                    {"status", "ALREADY_APPROVED"},
+                    {"device_id", device_id},
+                    {"message", "Thiet bi da duoc cap phat; dang khoi tao phien dang nhap"}
+                });
+                return;
             }
 
             const DeviceSecuritySettings settings = device_security_settings.get();
@@ -2486,10 +2572,15 @@ int main() {
         }
     });
 
-    server.Post("/api/logout", [](
-        const httplib::Request&,
+    server.Post("/api/logout", [&auth_service, &mfa_service](
+        const httplib::Request& request,
         httplib::Response& response
     ) {
+        if (const auto token = read_bearer_token(request); token.has_value()) {
+            if (const auto subject = auth_service.verify_token(*token); subject.has_value()) {
+                mfa_service.clear_user_session(subject->username);
+            }
+        }
         response.set_header(
             "Set-Cookie",
             "ZTAS_SESSION_TOKEN=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"
@@ -2679,14 +2770,23 @@ int main() {
                 send_json(response, 500, {{"error", "OTP_GENERATION_FAILED"}});
                 return;
             }
+            if (challenge.already_used) {
+                json body = decision_json(decision);
+                body["mfa_status"] = "SESSION_CODE_ALREADY_USED";
+                body["message"] = "Ma Step-Up da duoc dung trong phien nay. Dang xuat roi dang nhap lai de gui yeu cau ma moi.";
+                send_json(response, 403, body);
+                return;
+            }
 
-            audit_logger.write({
-                {"event_type", "MFA_CHALLENGE_ISSUED"},
-                {"username", subject->username},
-                {"challenge_id", challenge.challenge_id},
-                {"required_auth_level", challenge.required_auth_level},
-                {"expires_at", challenge.expires_at}
-            });
+            if (!challenge.already_requested) {
+                audit_logger.write({
+                    {"event_type", "MFA_CHALLENGE_ISSUED"},
+                    {"username", subject->username},
+                    {"challenge_id", challenge.challenge_id},
+                    {"required_auth_level", challenge.required_auth_level},
+                    {"expires_at", challenge.expires_at}
+                });
+            }
 
             json body = decision_json(decision);
             body["challenge_id"] = challenge.challenge_id;
@@ -2738,7 +2838,8 @@ int main() {
                 {"required_auth_level", item.required_auth_level},
                 {"requested_at", item.requested_at},
                 {"expires_at", item.expires_at},
-                {"code_ready", item.code_ready}
+                {"code_ready", item.code_ready},
+                {"code_used", item.code_used}
             });
         }
         send_json(response, 200, {{"requests", requests}});
@@ -2765,7 +2866,8 @@ int main() {
             {"challenge_id", item->challenge_id},
             {"required_auth_level", item->required_auth_level},
             {"expires_at", item->expires_at},
-            {"status", item->code_ready ? "CODE_READY" : "PENDING_ADMIN_CODE"}
+            {"status", item->code_used ? "USED" :
+                (item->code_ready ? "CODE_READY" : "PENDING_ADMIN_CODE")}
         });
     });
 
@@ -2787,7 +2889,7 @@ int main() {
             if (!mfa_service.issue_admin_code(challenge_id, code)) {
                 send_json(response, 400, {
                     {"error", "MFA_CODE_POLICY_OR_REQUEST_INVALID"},
-                    {"message", "Mã cần ít nhất 6 chữ số, 1 chữ hoa và 1 ký tự đặc biệt; yêu cầu cũng phải còn hiệu lực."}
+                    {"message", "Mã cần tối thiểu 6 ký tự, 1 chữ hoa và 1 ký tự đặc biệt; yêu cầu cũng phải còn hiệu lực."}
                 });
                 return;
             }

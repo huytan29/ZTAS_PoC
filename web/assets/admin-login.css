@@ -14,4 +14,4 @@ input { width:100%; padding:11px; border:1px solid #cbd8e6; border-radius:8px; c
 input:focus { outline:2px solid #a9c8ff; border-color:var(--blue); }
 button { cursor:pointer; padding:12px; border:0; border-radius:8px; background:var(--blue); color:#fff; font:inherit; font-weight:760; }
 button:hover { background:#1857d1; } button:disabled { cursor:wait; opacity:.65; }
-.message { min-height:20px; margin:0; color:var(--red); font-size:12px; }.login-note { margin:20px 0 0; color:var(--muted); font-size:12px; }.login-note code { padding:2px 5px; border-radius:4px; background:#eef3fa; color:#304b70; }
+.message { min-height:20px; margin:0; color:var(--red); font-size:12px; }.login-note { margin:20px 0 0; color:var(--muted); font-size:12px; }.login-note a { color:var(--blue); font-weight:720; text-decoration:none; }.login-note a:hover { text-decoration:underline; }.login-note code { padding:2px 5px; border-radius:4px; background:#eef3fa; color:#304b70; }

@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="/assets/common.css">
   <link rel="stylesheet" href="/assets/dashboard.css?v=7">
   <script defer src="/assets/common.js"></script>
-  <script defer src="/assets/dashboard.js?v=7"></script>
+  <script defer src="/assets/dashboard.js?v=9"></script>
 </head>
 <body>
   <header class="topbar">
@@ -90,7 +90,7 @@
           <h2>Yêu cầu kết nối chờ phê duyệt</h2>
           <p>Thiết bị mới chỉ được ghi nhận tại đây; chưa thể truy cập CSDL hay xuất hiện trong danh sách thiết bị được cấp quyền.</p>
         </div>
-        <div class="section-heading__actions"><span class="pending-request-badge" id="pending-request-count">0 yêu cầu chờ</span><button class="button button--secondary" id="issue-enrollment-code-button" type="button">Cấp mã đăng ký</button></div>
+        <div class="section-heading__actions"><span class="pending-request-badge" id="pending-request-count">0 yêu cầu chờ</span></div>
       </header>
       <div class="connection-request-table-wrap" id="connection-request-list">
         <p class="empty-state">Đang tải yêu cầu kết nối…</p>
@@ -154,30 +154,10 @@
     </form>
   </dialog>
 
-  <dialog class="modal" id="issue-enrollment-code-dialog">
-    <form class="modal__card" id="issue-enrollment-code-form">
-      <header class="modal__header"><div><h2>Cấp mã đăng ký một lần</h2><p>Mã có hiệu lực 10 phút và chỉ dùng để thiết bị gửi yêu cầu chờ duyệt, không cấp quyền dữ liệu.</p></div><button class="icon-button" type="button" data-close-dialog="issue-enrollment-code-dialog">×</button></header>
-      <label class="form-field">Profile thiết bị<select name="profile"><option value="guest">Guest — Trust 1 · external-network</option><option value="unmanaged">Unmanaged — Trust 2 · external-network</option><option value="managed-vm" selected>Managed VM — Trust 3 · lab-network</option><option value="trusted">Trusted — Trust 4 · campus-network</option><option value="secure">Secure — Trust 5 · secure-zone</option></select></label>
-      <label class="form-field">Tài khoản sẽ gán<select name="assigned_username" required><option value="">Đang tải tài khoản…</option></select></label>
-      <label class="form-field">Thời hạn mã<select name="lifetime_seconds"><option value="300">5 phút</option><option value="600" selected>10 phút</option><option value="1800">30 phút</option></select></label>
-      <p class="form-message" id="issue-enrollment-code-message"></p>
-      <footer class="modal__footer"><button class="button button--secondary" type="button" data-close-dialog="issue-enrollment-code-dialog">Hủy</button><button class="button button--primary" type="submit">Tạo mã</button></footer>
-    </form>
-  </dialog>
-
-  <dialog class="modal" id="enrollment-code-result-dialog">
-    <section class="modal__card">
-      <header class="modal__header"><div><h2>Mã đăng ký đã được cấp</h2><p id="enrollment-code-result-text">Mã chỉ hiển thị một lần. Gửi mã này cho đúng VM hoặc Docker client.</p></div></header>
-      <label class="form-field">Enrollment code<input id="issued-enrollment-code" readonly></label>
-      <div class="credential-actions"><button class="button button--secondary" id="copy-enrollment-code" type="button">Sao chép mã</button></div>
-      <footer class="modal__footer"><button class="button button--primary" type="button" data-close-dialog="enrollment-code-result-dialog">Đã lưu mã</button></footer>
-    </section>
-  </dialog>
-
   <dialog class="modal" id="issue-mfa-code-dialog">
     <form class="modal__card" id="issue-mfa-code-form">
       <header class="modal__header"><div><h2>Cấp mã MFA theo yêu cầu</h2><p id="issue-mfa-code-context">Admin tự đặt mã và cung cấp qua kênh an toàn cho đúng người dùng.</p></div><button class="icon-button" type="button" data-close-dialog="issue-mfa-code-dialog">×</button></header>
-      <label class="form-field">Mã MFA<input name="code" type="text" autocomplete="off" placeholder="VD: PTIT!123456" required><small>Phải có ít nhất 6 chữ số, 1 chữ hoa và 1 ký tự đặc biệt.</small></label>
+      <label class="form-field">Mã MFA<input name="code" type="text" autocomplete="off" placeholder="VD: Ptit!1" required><small>Tối thiểu 6 ký tự, có 1 chữ hoa và 1 ký tự đặc biệt.</small></label>
       <p class="form-message" id="issue-mfa-code-message"></p>
       <footer class="modal__footer"><button class="button button--secondary" type="button" data-close-dialog="issue-mfa-code-dialog">Hủy</button><button class="button button--primary" type="submit">Cấp mã cho yêu cầu</button></footer>
     </form>

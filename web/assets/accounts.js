@@ -4,6 +4,7 @@ let adminToken = sessionStorage.getItem("ztas_admin_token") ?? "";
 let managedUsers = [];
 let accountToAssign = null;
 let registeredDevices = [];
+let issuedAccountKey = "";
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, character => ({
@@ -59,11 +60,12 @@ function renderUsers(users) {
     const session = user.temporary_session_minutes > 0 ? `Tạm thời ${user.temporary_session_minutes} phút` : "Không giới hạn theo thời gian";
     const isCurrent = user.username === currentUser;
     const hasGlobalScope = devices.includes("*");
-    return `<tr><td><strong>${escapeHtml(user.username)}</strong></td><td><span class="role-badge role-badge--${escapeHtml(user.role)}">${escapeHtml(roleLabel(user.role))}</span></td><td class="account-table__permission">${escapeHtml(rolePermissionShort(user.role))}</td><td class="account-table__devices">${escapeHtml(devicesText)}</td><td>${escapeHtml(session)}</td><td class="account-table__actions"><div class="account-action-group">${hasGlobalScope ? '<span class="account-self">Phạm vi toàn hệ thống</span>' : `<button class="button button--secondary button--small" data-assign-user="${escapeHtml(user.username)}">Gán thiết bị</button>`}${isCurrent ? '<span class="account-self">Phiên hiện tại</span>' : `<button class="button button--danger-outline button--small" data-delete-user="${escapeHtml(user.username)}">Xóa</button>`}</div></td></tr>`;
+    return `<tr><td><strong>${escapeHtml(user.username)}</strong></td><td><span class="role-badge role-badge--${escapeHtml(user.role)}">${escapeHtml(roleLabel(user.role))}</span></td><td class="account-table__permission">${escapeHtml(rolePermissionShort(user.role))}</td><td class="account-table__devices">${escapeHtml(devicesText)}</td><td>${escapeHtml(session)}</td><td class="account-table__actions"><div class="account-action-group">${hasGlobalScope ? '<span class="account-self">Phạm vi toàn hệ thống</span>' : `<button class="button button--secondary button--small" data-assign-user="${escapeHtml(user.username)}">Gán thiết bị</button>`}<button class="button button--secondary button--small" data-issue-account-key="${escapeHtml(user.username)}">Cấp lại key</button>${isCurrent ? '<span class="account-self">Phiên hiện tại</span>' : `<button class="button button--danger-outline button--small" data-delete-user="${escapeHtml(user.username)}">Xóa</button>`}</div></td></tr>`;
   }).join("")}</tbody></table>`;
 
   container.querySelectorAll("[data-delete-user]").forEach(button => button.addEventListener("click", () => openDeleteDialog(button.dataset.deleteUser)));
   container.querySelectorAll("[data-assign-user]").forEach(button => button.addEventListener("click", () => openAssignmentDialog(button.dataset.assignUser)));
+  container.querySelectorAll("[data-issue-account-key]").forEach(button => button.addEventListener("click", () => issueAccountKey(button.dataset.issueAccountKey)));
 }
 
 function setConnection(online) {
@@ -88,6 +90,15 @@ async function refreshUsers() {
 
 function showDialog(id) { document.querySelector(`#${id}`).showModal(); }
 function closeDialog(id) { document.querySelector(`#${id}`).close(); }
+
+function showAccountKey(username, key, rotated = false) {
+  issuedAccountKey = key;
+  document.querySelector("#issued-account-key").value = key;
+  document.querySelector("#account-key-result-text").textContent = rotated
+    ? `Account Key mới cho ${username}. Key cũ mất hiệu lực ngay; lưu và chuyển key mới qua kênh an toàn.`
+    : `Account Key của ${username}. Key chỉ hiển thị một lần; lưu và chuyển cho đúng người dùng qua kênh an toàn.`;
+  showDialog("account-key-result-dialog");
+}
 
 function openDeleteDialog(username) {
   userToDelete = username;
@@ -166,9 +177,20 @@ document.querySelector("#create-user-form").addEventListener("submit", async eve
     const data = await parseResponse(response);
     closeDialog("create-user-dialog");
     await refreshUsers();
-    alert(`Đã tạo tài khoản ${data.user.username}. Mật khẩu khởi tạo: ptit@123`);
+    showAccountKey(data.user.username, data.account_key);
   } catch (error) { message.textContent = error.message; }
 });
+
+async function issueAccountKey(username) {
+  if (!window.confirm(`Cấp lại Account Key cho ${username}? Key cũ sẽ mất hiệu lực ngay.`)) return;
+  try {
+    const response = await fetch(`/api/users/${encodeURIComponent(username)}/account-key`, {
+      method: "POST", headers: apiHeaders()
+    });
+    const data = await parseResponse(response);
+    showAccountKey(data.username, data.account_key, true);
+  } catch (error) { alert(error.message); }
+}
 
 document.querySelector("#confirm-delete-user").addEventListener("click", async () => {
   if (!userToDelete) return;
@@ -199,6 +221,16 @@ document.querySelector("#assign-device-button").addEventListener("click", async 
 
 document.querySelectorAll("[data-close-dialog]").forEach(button => button.addEventListener("click", () => closeDialog(button.dataset.closeDialog)));
 document.querySelector("#assignment-dialog").addEventListener("close", () => { accountToAssign = null; });
+document.querySelector("#copy-account-key").addEventListener("click", async () => {
+  if (!issuedAccountKey) return;
+  await navigator.clipboard.writeText(issuedAccountKey);
+  document.querySelector("#copy-account-key").textContent = "Đã sao chép";
+});
+document.querySelector("#account-key-result-dialog").addEventListener("close", () => {
+  issuedAccountKey = "";
+  document.querySelector("#issued-account-key").value = "";
+  document.querySelector("#copy-account-key").textContent = "Sao chép key";
+});
 document.querySelector("#logout-button").addEventListener("click", async () => {
   await fetch("/api/logout", { method: "POST" }).catch(() => undefined);
   sessionStorage.removeItem("ztas_admin_token");

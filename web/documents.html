@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="/assets/common.css">
   <link rel="stylesheet" href="/assets/documents.css?v=3">
   <script defer src="/assets/common.js"></script>
-  <script defer src="/assets/documents.js?v=18"></script>
+  <script defer src="/assets/documents.js?v=19"></script>
 </head>
 <body>
   <header class="topbar">
@@ -76,6 +76,15 @@
       </header>
       <div class="document-reader-dialog__content" id="document-reader-dialog-content"></div>
     </article>
+  </dialog>
+
+  <dialog class="document-upload-dialog" id="mfa-code-dialog" aria-labelledby="mfa-code-title">
+    <form class="document-upload-dialog__card" id="mfa-code-form">
+      <header class="document-upload-dialog__header"><div><p class="page-kicker">Xác thực bổ sung</p><h2 id="mfa-code-title">Nhập mã Step-Up</h2><p id="mfa-code-description">Quản trị viên đã cấp mã cho yêu cầu đọc tài liệu của bạn.</p></div><button class="document-reader-dialog__close" id="mfa-code-close" type="button" aria-label="Đóng">×</button></header>
+      <label class="document-upload-field">Mã Step-Up<input name="mfa_code" type="password" autocomplete="one-time-code" required></label>
+      <p class="document-upload-message" id="mfa-code-message"></p>
+      <footer class="document-upload-dialog__footer"><button class="button button--secondary" id="mfa-code-cancel" type="button">Hủy</button><button class="button button--primary" type="submit">Xác nhận mã</button></footer>
+    </form>
   </dialog>
 
   <dialog class="document-upload-dialog" id="document-upload-dialog">

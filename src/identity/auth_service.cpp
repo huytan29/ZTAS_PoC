@@ -184,6 +184,14 @@ std::string create_password_hash(const std::string& password) {
         hex_encode(derived, sizeof(derived));
 }
 
+std::string generate_account_key() {
+    unsigned char bytes[24];
+    if (RAND_bytes(bytes, sizeof(bytes)) != 1) {
+        throw std::runtime_error("Khong the tao Account Key");
+    }
+    return "acc_" + hex_encode(bytes, sizeof(bytes));
+}
+
 bool valid_username(const std::string& username) {
     if (username.size() < 3 || username.size() > 32) {
         return false;
@@ -409,6 +417,58 @@ std::optional<AccessSubject> AuthService::authenticate(
     return std::nullopt;
 }
 
+std::optional<AccessSubject> AuthService::authenticate_device_enrollment(
+    const std::string& username,
+    const std::string& password,
+    const std::string& account_key
+) const {
+    if (account_key.empty()) return std::nullopt;
+
+    try {
+        std::lock_guard<std::mutex> lock(mutex_);
+        std::ifstream file(users_file_);
+        const json users_data = json::parse(file);
+        const long long now = current_epoch();
+
+        for (const auto& user : users_data.at("users")) {
+            if (user.value("username", "") != username ||
+                !verify_secret(password, user.value("password_hash", "")) ||
+                !verify_secret(account_key, user.value("account_key_hash", ""))) {
+                continue;
+            }
+
+            const long long fixed_expires_at =
+                user.value("expires_at", 0LL);
+            if (fixed_expires_at > 0 && fixed_expires_at <= now) {
+                return std::nullopt;
+            }
+
+            long long effective_expires_at = fixed_expires_at;
+            const int temporary_session_minutes =
+                user.value("temporary_session_minutes", 0);
+            if (temporary_session_minutes > 0) {
+                const long long temporary_expiry = now +
+                    static_cast<long long>(temporary_session_minutes) * 60;
+                effective_expires_at = fixed_expires_at > 0
+                    ? std::min(fixed_expires_at, temporary_expiry)
+                    : temporary_expiry;
+            }
+
+            return AccessSubject{
+                username,
+                user.value("role", ""),
+                1,
+                user.value("allowed_device_ids", std::vector<std::string>{}),
+                effective_expires_at
+            };
+        }
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+
+    return std::nullopt;
+}
+
 bool AuthService::admin_password_setup_required() const {
     std::lock_guard<std::mutex> lock(mutex_);
 
@@ -537,10 +597,13 @@ UserProvisioningResult AuthService::create_user(
             }
         }
 
+        const std::string account_key = generate_account_key();
         json user = {
             {"username", username},
             {"role", role},
             {"password_hash", create_password_hash("ptit@123")},
+            {"account_key_hash", create_password_hash(account_key)},
+            {"account_key_issued_at", current_epoch()},
             {"allowed_device_ids", json::array()},
             {"expires_at", 0}
         };
@@ -559,7 +622,8 @@ UserProvisioningResult AuthService::create_user(
             "USER_CREATED",
             "Da tao tai khoan voi mat khau khoi tao ptit@123",
             username,
-            role
+            role,
+            account_key
         };
     } catch (const std::exception& error) {
         return {
@@ -569,6 +633,40 @@ UserProvisioningResult AuthService::create_user(
             "",
             ""
         };
+    }
+}
+
+AccountKeyIssueResult AuthService::issue_account_key(
+    const std::string& username
+) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    try {
+        std::ifstream file(users_file_);
+        json users_data = json::parse(file);
+        file.close();
+        if (!users_data.contains("users") || !users_data["users"].is_array()) {
+            return {false, "INVALID_USERS_STORE", "Kho tai khoan khong dung dinh dang", "", ""};
+        }
+
+        for (auto& user : users_data["users"]) {
+            if (user.value("username", "") != username) continue;
+
+            const std::string account_key = generate_account_key();
+            user["account_key_hash"] = create_password_hash(account_key);
+            user["account_key_issued_at"] = current_epoch();
+            write_users_data(users_file_, users_data);
+            return {
+                true,
+                "ACCOUNT_KEY_ISSUED",
+                "Da cap Account Key moi; key cu da het hieu luc",
+                username,
+                account_key
+            };
+        }
+
+        return {false, "USER_NOT_FOUND", "Khong tim thay tai khoan", username, ""};
+    } catch (const std::exception& error) {
+        return {false, "ACCOUNT_KEY_ISSUE_ERROR", error.what(), username, ""};
     }
 }
 

@@ -7,6 +7,8 @@ const accountNote = document.querySelector("#reader-account-note");
 const readerDialog = document.querySelector("#document-reader-dialog");
 const readerDialogTitle = document.querySelector("#document-reader-title");
 const readerDialogContent = document.querySelector("#document-reader-dialog-content");
+const mfaCodeDialog = document.querySelector("#mfa-code-dialog");
+let mfaCodeResolver = null;
 
 let token = sessionStorage.getItem("ztas_document_token") || "";
 let context = JSON.parse(sessionStorage.getItem("ztas_document_context") || "null");
@@ -147,6 +149,12 @@ async function readResponse(response) {
 
 async function stepUp(data) {
   let code = "";
+  if (data.mfa_status === "SESSION_CODE_ALREADY_USED") {
+    throw new Error(data.message || "Mã Step-Up đã được dùng trong phiên này. Hãy đăng xuất để yêu cầu mã mới.");
+  }
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission().catch(() => undefined);
+  }
   if (data.mfa_status === "PENDING_ADMIN_CODE") {
     code = await waitForAdminCode(data);
   } else {
@@ -177,13 +185,32 @@ async function waitForAdminCode(data) {
     });
     const status = await response.json().catch(() => ({}));
     if (response.ok && status.status === "CODE_READY") {
-      const code = window.prompt("Admin đã cấp mã MFA. Nhập mã bạn nhận được để tiếp tục:");
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification("ZTAS", { body: "Quản trị viên đã cấp mã Step-Up cho yêu cầu của bạn." });
+      }
+      const code = await requestMfaCode(data.required_auth_level);
       if (!code) throw new Error("Đã hủy xác thực bổ sung.");
       return code;
+    }
+    if (response.ok && status.status === "USED") {
+      throw new Error("Mã Step-Up đã được dùng trong phiên này. Hãy đăng xuất để yêu cầu mã mới.");
     }
     if (response.status === 404) throw new Error("Yêu cầu MFA đã hết hạn hoặc bị thu hồi.");
   }
   throw new Error("Hết thời gian chờ admin cấp mã MFA.");
+}
+
+function requestMfaCode(requiredLevel) {
+  return new Promise(resolve => {
+    mfaCodeResolver = resolve;
+    const form = document.querySelector("#mfa-code-form");
+    form.reset();
+    document.querySelector("#mfa-code-description").textContent =
+      `Quản trị viên đã cấp mã cho yêu cầu xác thực cấp ${requiredLevel}.`;
+    document.querySelector("#mfa-code-message").textContent = "";
+    mfaCodeDialog.showModal();
+    form.elements.mfa_code.focus();
+  });
 }
 
 async function loadStoredDocuments(zone) {
@@ -335,6 +362,22 @@ document.querySelector("#logout-button").addEventListener("click", async () => {
   viewerTitle.textContent = "Chọn mức tài liệu để đọc";
   viewerContent.innerHTML = "<p>Đã đăng xuất tài khoản.</p>";
   setDecision("", "CHỜ");
+});
+
+document.querySelector("#mfa-code-form").addEventListener("submit", event => {
+  event.preventDefault();
+  const code = event.currentTarget.elements.mfa_code.value;
+  const resolve = mfaCodeResolver;
+  mfaCodeResolver = null;
+  mfaCodeDialog.close();
+  resolve?.(code);
+});
+document.querySelector("#mfa-code-close").addEventListener("click", () => mfaCodeDialog.close());
+document.querySelector("#mfa-code-cancel").addEventListener("click", () => mfaCodeDialog.close());
+mfaCodeDialog.addEventListener("close", () => {
+  const resolve = mfaCodeResolver;
+  mfaCodeResolver = null;
+  resolve?.("");
 });
 
 updateSession();
