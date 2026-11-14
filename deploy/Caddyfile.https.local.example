@@ -1,0 +1,26 @@
+# Khong mo cong 80: moi truong lab chi phuc vu HTTPS tren cong 8443.
+{
+	# ZTAS chi quan ly Caddy bang start/stop PID; khong can mo admin API 2019.
+	admin off
+	auto_https disable_redirects
+	# Luu CA/chung chi cung runtime cua du an, khong phu thuoc AppData cua
+	# tai khoan dang khoi chay Caddy.
+	storage file_system runtime/caddy-data
+}
+
+# Sao chep file nay thanh Caddyfile. ztas.ptit la hostname co dinh: hay tao
+# DNS noi bo (khuyen nghi) hoac hosts entry tro no den IPv4 LAN cua Windows
+# Server. Day la HTTPS noi bo: client phai tin CA local cua Caddy.
+https://ztas.ptit:8443 {
+	tls internal
+
+	# Caddy tu dat X-Forwarded-For tu TCP peer va bo qua gia tri ma client
+	# tu gui. ZTAS chi tin header nay khi Caddy ket noi qua loopback.
+	reverse_proxy 127.0.0.1:8020
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+	}
+}

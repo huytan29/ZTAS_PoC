@@ -2,7 +2,8 @@
 
 PoC Zero Trust Access System (C++17): ZTAS xác thực người dùng và thiết bị,
 hỏi OPA để lấy quyết định policy, rồi mới đọc tài liệu từ SQLite. Dịch vụ chính
-chạy tại `http://localhost:8020`; OPA chạy trong Docker tại `127.0.0.1:8181`.
+chạy qua HTTPS tại `https://ztas.ptit:8443`; OPA chạy trong Docker tại
+`127.0.0.1:8181`.
 
 ## Hỗ trợ nền tảng
 
@@ -125,6 +126,46 @@ Không cần thay đổi PowerShell Execution Policy vì dự án không chạy 
   thiết bị, không đặt trong policy, Git hoặc log.
 - Server lắng nghe `0.0.0.0:8020` để máy ảo/container trong lab có thể kết nối.
   Chỉ mở firewall cổng này trong mạng lab tin cậy.
+
+### HTTPS nội bộ với Caddy (Windows)
+
+`make run` tự chạy ZTAS ở loopback, tạo Caddyfile từ
+`deploy/Caddyfile.https.local.example`, rồi khởi động Caddy làm HTTPS proxy.
+Chỉ cần cài Caddy **một lần** tại `C:\Tools\Caddy\caddy.exe` trên Windows
+(hoặc `brew install caddy` trên macOS), rồi tạo DNS nội bộ (hoặc hosts entry)
+trỏ `ztas.ptit` đến IPv4 LAN hiện tại của máy chủ. Dùng hostname cố định thay
+vì IP giúp người dùng di chuyển mạng mà không mất URL, chứng chỉ hoặc browser
+device proof.
+
+Sau đó, chạy:
+
+```cmd
+mingw32-make run
+```
+
+`ZTAS_TRUST_LOOPBACK_PROXY` chỉ tin `X-Forwarded-For` khi kết nối TCP đến từ
+`127.0.0.1` hoặc `::1`; không bật biến này nếu không dùng Caddy native trên
+cùng máy. Client truy cập qua `https://ztas.ptit:8443/dashboard`, không qua
+cổng HTTP `8020`. Chứng chỉ `tls internal` cần được cài vào kho tin cậy của
+từng máy khách (Ubuntu/Windows) trước khi sử dụng.
+
+Trên Windows, có thể chạy bootstrap một lần bằng CMD quyền Administrator:
+
+```cmd
+scripts\deploy-https-windows.cmd 192.168.2.2
+```
+
+Script tự xác định IPv4 LAN, tải Caddy nếu chưa có, cập nhật hosts của máy chủ,
+mở firewall cổng 8443, build/chạy ZTAS và xuất CA tại
+`runtime\ztas-local-ca.crt` để cài vào Ubuntu VM. Qua Make, dùng:
+`mingw32-make deploy-https ZTAS_SERVER_IP="IP_cua_PC"`.
+
+Trên macOS, chạy lệnh tương đương (script sẽ hỏi mật khẩu `sudo` để cập nhật
+`/etc/hosts` và Keychain):
+
+```sh
+make deploy-https ZTAS_SERVER_IP=192.168.2.10
+```
 
 ## Đặt tài liệu theo phân vùng quyền
 

@@ -186,6 +186,44 @@ bool valid_ip_address(const std::string& value) {
         inet_pton(AF_INET6, value.c_str(), &ipv6) == 1;
 }
 
+std::string trim_copy(std::string value) {
+    const auto first = value.find_first_not_of(" \t");
+    if (first == std::string::npos) return "";
+    const auto last = value.find_last_not_of(" \t");
+    return value.substr(first, last - first + 1);
+}
+
+bool is_loopback_address(const std::string& address) {
+    return address == "127.0.0.1" || address == "::1" ||
+        address == "::ffff:127.0.0.1";
+}
+
+// Chi doc X-Forwarded-For khi Caddy chay tren cung may da ket noi qua
+// loopback va che do nay duoc bat tuong minh. Ket noi truc tiep tu mang LAN
+// khong the tu khai bao header nay de gia mao IP thiet bi.
+std::string client_source_ip(const httplib::Request& request) {
+    const std::string remote_ip = request.remote_addr.empty()
+        ? "unknown"
+        : request.remote_addr;
+    static const bool trust_loopback_proxy =
+        env_flag("ZTAS_TRUST_LOOPBACK_PROXY", false);
+
+    if (!trust_loopback_proxy || !is_loopback_address(remote_ip) ||
+        !request.has_header("X-Forwarded-For")) {
+        return remote_ip;
+    }
+
+    const std::string forwarded = request.get_header_value("X-Forwarded-For");
+    const std::string candidate = trim_copy(
+        forwarded.substr(0, forwarded.find(','))
+    );
+    return valid_ip_address(candidate) ? candidate : remote_ip;
+}
+
+std::string secure_cookie_attribute() {
+    return env_flag("ZTAS_SECURE_COOKIES", false) ? "; Secure" : "";
+}
+
 std::optional<std::string> read_text_file(
     const std::string& path
 ) {
@@ -619,9 +657,7 @@ void handle_document_request(
             ? request.get_header_value("X-Device-Key")
             : "";
 
-    const std::string source_ip = request.remote_addr.empty()
-        ? "unknown"
-        : request.remote_addr;
+    const std::string source_ip = client_source_ip(request);
 
     const bool managed_reader_session =
         !subject->reader_device_id.empty() &&
@@ -880,6 +916,11 @@ int main() {
 
     const std::string token_secret =
         env_or_default("APP_TOKEN_SECRET", "");
+
+    // Khi dat Caddy tren cung may, chi mo backend qua loopback. Caddy la diem
+    // vao HTTPS duy nhat; khong de client bo qua TLS bang cong 8020.
+    const std::string server_bind_address =
+        env_or_default("ZTAS_BIND_ADDRESS", "0.0.0.0");
 
     if (token_secret.size() < 32) {
         std::cerr
@@ -2100,7 +2141,7 @@ int main() {
                     {"event_type", "DEVICE_CONNECTION_DENY"},
                     {"device_id", device_id},
                     {"username", account_username},
-                    {"source_ip", request.remote_addr.empty() ? "unknown" : request.remote_addr},
+                    {"source_ip", client_source_ip(request)},
                     {"reason_code", "INVALID_ACCOUNT_ENROLLMENT_CREDENTIALS"},
                     {"severity", "high"}
                 });
@@ -2137,7 +2178,8 @@ int main() {
                 response.set_header(
                     "Set-Cookie",
                     "ZTAS_SESSION_TOKEN=" + enrollment_session +
-                        "; Path=/; Max-Age=900; HttpOnly; SameSite=Strict"
+                        "; Path=/; Max-Age=900; HttpOnly; SameSite=Strict" +
+                        secure_cookie_attribute()
                 );
                 discovery_service.resolve(device_id);
                 send_json(response, 200, {
@@ -2154,13 +2196,13 @@ int main() {
                     send_json(response, 500, {{"error", "DEVICE_PROOF_GENERATION_FAILED"}});
                     return;
                 }
-                // Cookie khong doc duoc tu JavaScript. Trong moi truong lab
-                // HTTP, Secure khong duoc dat; trien khai that phai dung HTTPS
-                // va them co Secure.
+                // Cookie khong doc duoc tu JavaScript. ZTAS_SECURE_COOKIES
+                // chi duoc bat khi Caddy dang phuc vu HTTPS.
                 response.set_header(
                     "Set-Cookie",
                     "ZTAS_DEVICE_PROOF=" + browser_device_proof +
-                        "; Path=/; Max-Age=2592000; HttpOnly; SameSite=Strict"
+                        "; Path=/; Max-Age=2592000; HttpOnly; SameSite=Strict" +
+                        secure_cookie_attribute()
                 );
             }
 
@@ -2170,7 +2212,8 @@ int main() {
             response.set_header(
                 "Set-Cookie",
                 "ZTAS_SESSION_TOKEN=" + enrollment_session +
-                    "; Path=/; Max-Age=900; HttpOnly; SameSite=Strict"
+                    "; Path=/; Max-Age=900; HttpOnly; SameSite=Strict" +
+                    secure_cookie_attribute()
             );
 
             const DeviceSecuritySettings settings = device_security_settings.get();
@@ -2189,7 +2232,7 @@ int main() {
             const DiscoveryResult result = discovery_service.record_attempt(
                 device_id,
                 profile_location,
-                request.remote_addr.empty() ? "unknown" : request.remote_addr,
+                client_source_ip(request),
                 request.has_header("User-Agent")
                     ? request.get_header_value("User-Agent")
                     : "unknown",
@@ -2214,7 +2257,7 @@ int main() {
                     {"event_type", "DEVICE_CONNECTION_REQUESTED"},
                     {"device_id", device_id},
                     {"location_id", profile_location},
-                {"source_ip", request.remote_addr.empty() ? "unknown" : request.remote_addr},
+                {"source_ip", client_source_ip(request)},
                     {"username", requested_username},
                     {"enrollment_profile", enrollment_profile},
                     {"trust_level", profile_trust},
@@ -2228,7 +2271,7 @@ int main() {
                 {"status", "PENDING_ADMIN_APPROVAL"},
                 {"device_id", device_id},
                 {"enrollment_verified", enrollment_verified},
-                {"source_ip", request.remote_addr.empty() ? "unknown" : request.remote_addr},
+                {"source_ip", client_source_ip(request)},
                 {"mac_capture_enabled", settings.mac_capture_enabled},
                 {"message", "Yeu cau da duoc gui den quan tri vien"}
             });
@@ -2655,8 +2698,7 @@ int main() {
             // chung thuc cua dung thiet bi duoc gan. Dieu nay chan viec chi
             // co username/password la co the dung tai khoan o may khac.
             if (subject->role != "admin") {
-                const std::string source_ip = request.remote_addr.empty()
-                    ? "unknown" : request.remote_addr;
+                const std::string source_ip = client_source_ip(request);
                 const std::string browser_device_proof = read_cookie_value(
                     request, "ZTAS_DEVICE_PROOF"
                 ).value_or("");
@@ -2696,7 +2738,8 @@ int main() {
             response.set_header(
                 "Set-Cookie",
                 "ZTAS_SESSION_TOKEN=" + access_token +
-                    "; Path=/; Max-Age=900; HttpOnly; SameSite=Strict"
+                    "; Path=/; Max-Age=900; HttpOnly; SameSite=Strict" +
+                    secure_cookie_attribute()
             );
 
             send_json(response, 200, {
@@ -2727,7 +2770,8 @@ int main() {
         }
         response.set_header(
             "Set-Cookie",
-            "ZTAS_SESSION_TOKEN=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"
+            "ZTAS_SESSION_TOKEN=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict" +
+                secure_cookie_attribute()
         );
         send_json(response, 200, {{"message", "Da dang xuat"}});
     });
@@ -2753,8 +2797,7 @@ int main() {
                 return;
             }
 
-            const std::string source_ip = request.remote_addr.empty()
-                ? "unknown" : request.remote_addr;
+            const std::string source_ip = client_source_ip(request);
             const std::string browser_device_proof = read_cookie_value(
                 request, "ZTAS_DEVICE_PROOF"
             ).value_or("");
@@ -2818,8 +2861,7 @@ int main() {
         const auto subject = authenticate_request(request, auth_service, response);
         if (!subject.has_value()) return;
 
-        const std::string source_ip = request.remote_addr.empty()
-            ? "unknown" : request.remote_addr;
+        const std::string source_ip = client_source_ip(request);
         const std::string browser_device_proof = read_cookie_value(
             request, "ZTAS_DEVICE_PROOF"
         ).value_or("");
@@ -2914,8 +2956,7 @@ int main() {
             });
             return;
         }
-        const std::string source_ip = request.remote_addr.empty()
-            ? "unknown" : request.remote_addr;
+        const std::string source_ip = client_source_ip(request);
         const bool managed_reader_session =
             !subject->reader_device_id.empty() &&
             subject->reader_device_id == device_id &&
@@ -3382,9 +3423,10 @@ int main() {
         );
     });
 
-    std::cout << "ZTAS is running at http://localhost:8020" << std::endl;
+    std::cout << "ZTAS backend is running at http://"
+              << server_bind_address << ":8020" << std::endl;
 
-    if (!server.listen("0.0.0.0", 8020)) {
+    if (!server.listen(server_bind_address.c_str(), 8020)) {
         std::cerr << "Khong the mo cong 8020: "
                   << std::strerror(errno) << std::endl;
         return 1;

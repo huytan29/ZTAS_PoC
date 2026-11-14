@@ -159,26 +159,33 @@ async function stepUp(data) {
     code = await waitForAdminCode(data);
   } else {
     const hint = data.demo_code ? ` Mã demo: ${data.demo_code}` : "";
-    code = window.prompt(`Cần xác thực bổ sung cấp ${data.required_auth_level}.${hint}`);
+    code = await requestMfaCode(data.required_auth_level, `Cần xác thực bổ sung cấp ${data.required_auth_level}.${hint}`);
   }
-  if (!code) throw new Error("Đã hủy xác thực bổ sung.");
-  const response = await fetch("/api/step-up", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ challenge_id: data.challenge_id, mfa_code: code })
-  });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) {
+  while (code) {
+    const response = await fetch("/api/step-up", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ challenge_id: data.challenge_id, mfa_code: code })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (response.ok) {
+      token = result.access_token;
+      sessionStorage.setItem("ztas_document_token", token);
+      return;
+    }
     if (result.error === "MFA_DEVICE_LOCKED") {
       throw new Error("Thiết bị đã bị khóa do nhập sai mã MFA 3 lần. Chờ admin gỡ khóa, sau đó yêu cầu mã mới.");
     }
     if (Number.isInteger(result.remaining_attempts)) {
-      throw new Error(`Mã Step-Up không đúng. Còn ${result.remaining_attempts} lần thử trước khi thiết bị bị khóa.`);
+      code = await requestMfaCode(
+        data.required_auth_level,
+        `Mã không đúng. Còn ${result.remaining_attempts} lần thử trước khi thiết bị bị khóa.`
+      );
+      continue;
     }
     throw new Error(result.error || "Xác thực bổ sung không thành công");
   }
-  token = result.access_token;
-  sessionStorage.setItem("ztas_document_token", token);
+  throw new Error("Đã hủy xác thực bổ sung.");
 }
 
 async function waitForAdminCode(data) {
@@ -211,14 +218,14 @@ async function waitForAdminCode(data) {
   throw new Error("Hết thời gian chờ admin cấp mã MFA.");
 }
 
-function requestMfaCode(requiredLevel) {
+function requestMfaCode(requiredLevel, initialMessage = "") {
   return new Promise(resolve => {
     mfaCodeResolver = resolve;
     const form = document.querySelector("#mfa-code-form");
     form.reset();
     document.querySelector("#mfa-code-description").textContent =
       `Quản trị viên đã cấp mã cho yêu cầu xác thực cấp ${requiredLevel}.`;
-    document.querySelector("#mfa-code-message").textContent = "";
+    document.querySelector("#mfa-code-message").textContent = initialMessage;
     mfaCodeDialog.showModal();
     form.elements.mfa_code.focus();
   });
