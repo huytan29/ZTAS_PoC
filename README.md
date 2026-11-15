@@ -218,6 +218,20 @@ cấu hình Locator và logic cài đặt. Hệ điều hành vẫn phải yêu 
 administrator khi cài CA — đây là biện pháp bảo vệ bắt buộc, không thể và
 không nên bỏ qua bằng trình duyệt hay script.
 
+### macOS: tạo installer PKG
+
+Không phân phối file `.command` cho end user macOS vì quyền thực thi và
+Gatekeeper có thể chặn file được chuyển qua mạng. Trên chính MacBook đã chạy
+server, tạo package bằng:
+
+```zsh
+make client-pkg ZTAS_SERVER_IP=192.168.2.10
+```
+
+Kết quả là `Client_PoC/Client/CaiDat-ZTAS-macOS.pkg`. Đây là bản lab chưa ký. Để phân
+phối cho end user, đặt `MACOS_INSTALLER_SIGN_IDENTITY` là Developer ID Installer
+rồi chạy lại, sau đó notarize package bằng Apple notary service.
+
 Trên Windows, có thể chạy bootstrap một lần bằng CMD quyền Administrator:
 
 ```cmd

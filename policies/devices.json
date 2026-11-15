@@ -66,6 +66,18 @@
       "location_id": "lab-network",
       "registered": true,
       "trust_level": 3
+    },
+    "web-e6045dde8ead4370b1b6853c": {
+      "allowed_ip_addresses": [
+        "192.168.2.2"
+      ],
+      "device_name": "Windows · windows",
+      "device_type": "windows",
+      "enrollment_profile": "manual",
+      "lifecycle_status": "ACTIVE",
+      "location_id": "lab-network",
+      "registered": true,
+      "trust_level": 3
     }
   }
 }

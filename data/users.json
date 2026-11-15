@@ -30,6 +30,17 @@
       "password_hash": "pbkdf2_sha256$200000$00832046518204f942acca6f019b1389$63b19cec3d99c93cefc27e26a4acc1e8d5a6b33565c714f79b1db79f96e8559c",
       "role": "manager",
       "username": "huytan29"
+    },
+    {
+      "account_key_hash": "pbkdf2_sha256$200000$89b4bc057ab131799c8be02e6d843365$7951db11b29b173cd2992bd455b301944c2648e2d75894a5f21922d0f8df9d27",
+      "account_key_issued_at": 1794747378,
+      "allowed_device_ids": [
+        "web-e6045dde8ead4370b1b6853c"
+      ],
+      "expires_at": 0,
+      "password_hash": "pbkdf2_sha256$200000$9a46ff7ac8106297b8b46970b4df887c$b5a77f336084341b1fcd7bcdcbba2cfbdbf789ed2d321270b0ea352230559dd8",
+      "role": "manager",
+      "username": "windows1"
     }
   ]
 }

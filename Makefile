@@ -111,7 +111,7 @@ ZTAS_DNS_MODE ?=
 VCPKG_DIR := $(CURDIR)/.vcpkg
 VCPKG_TARGET_TRIPLET ?= arm64-osx
 
-.PHONY: help bootstrap-vcpkg configure build provision docker-ready opa-up opa-logs env https-proxy deploy-https client-installers client-bundle run demo logs stop down clean
+.PHONY: help bootstrap-vcpkg configure build provision docker-ready opa-up opa-logs env https-proxy deploy-https client-installers client-bundle client-pkg run demo logs stop down clean
 
 help:
 	@echo "make build      Bootstrap vcpkg, download C++ libraries and build ZTAS"
@@ -120,6 +120,7 @@ help:
 	@echo "make run        Build, provision, start OPA, ZTAS and local HTTPS proxy"
 	@echo "make deploy-https ZTAS_SERVER_IP=x.x.x.x: one-command macOS HTTPS bootstrap"
 	@echo "make client-installers ZTAS_SERVER_IP=x.x.x.x: create one-click client installer folder"
+	@echo "make client-pkg ZTAS_SERVER_IP=x.x.x.x: build macOS PKG on this Mac"
 	@echo "make logs       Follow today's audit log"
 	@echo "make stop       Stop the ZTAS process started by make"
 	@echo "make down       Stop ZTAS and OPA"
@@ -184,6 +185,9 @@ client-installers:
 	@sh scripts/create-client-bundle-macos.sh "$(ZTAS_SERVER_IP)" "$(ZTAS_DNS_MODE)"
 
 client-bundle: client-installers
+
+client-pkg:
+	@sh scripts/build-client-pkg-macos.sh
 
 run: provision opa-up env
 	@set -e; \
