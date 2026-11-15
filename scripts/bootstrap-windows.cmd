@@ -42,9 +42,9 @@ echo Thu muc du an: "%TARGET_DIR%"
 echo.
 echo Buoc tiep theo trong CMD:
 echo   cd /d "%TARGET_DIR%"
-echo   set "VCPKG_ROOT=%%USERPROFILE%%\vcpkg"
 echo   mingw32-make build
 echo   mingw32-make run
 echo.
-echo Yeu cau: Git, CMake, MinGW-w64, vcpkg va Docker Desktop da duoc cai dat.
+echo Yeu cau: Git, CMake, MinGW-w64 va Docker Desktop da duoc cai dat.
+echo Vcpkg va cac thu vien C++ se tu dong tai trong .vcpkg khi build lan dau.
 endlocal

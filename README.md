@@ -13,8 +13,8 @@ GNU Make và dependency manager.
 
 | Nền tảng | Toolchain | Cài dependency |
 | --- | --- | --- |
-| macOS (Intel/Apple Silicon) | CMake 3.20+, Apple Clang | Homebrew |
-| Windows 10/11 x64 hoặc Windows Server tương thích | CMake 3.20+, MinGW-w64 x64 | vcpkg (`x64-mingw-static`) |
+| macOS Apple Silicon (M1/M2/M3) | CMake 3.20+, Xcode Command Line Tools | vcpkg tự tải khi build |
+| Windows 10/11 x64 hoặc Windows Server tương thích | CMake 3.20+, MinGW-w64 x64 | vcpkg tự tải khi build |
 
 Docker Desktop phải đang chạy trên cả hai nền tảng. `Makefile` là điểm vào duy
 nhất để build/vận hành; không có script khởi động riêng.
@@ -51,9 +51,14 @@ Windows 8.1 trở xuống không được hỗ trợ bởi phiên bản `cpp-htt
 ## macOS
 
 ```zsh
-brew install cmake cpp-httplib nlohmann-json openssl@3 sqlite
+xcode-select --install
+# Cai CMake mot lan neu may chua co: brew install cmake
 make build
 ```
+
+Lần build đầu tự clone `.vcpkg/`, bootstrap vcpkg và tải OpenSSL, SQLite,
+cpp-httplib và nlohmann-json cho Apple Silicon (`arm64-osx`). Mac Intel dùng
+`make build VCPKG_TARGET_TRIPLET=x64-osx`.
 
 Để khởi động đầy đủ môi trường demo sau khi build, chủ động chạy `make run`.
 Lệnh này sẽ cấp Device Key cho các thiết bị `registered: true`, khởi động OPA
@@ -63,35 +68,24 @@ và sinh `runtime/ztas.env` nếu tệp chưa tồn tại.
 
 ### Triển khai server bằng một lệnh
 
-Sau khi đã cài MinGW-w64, CMake, Docker Desktop và vcpkg một lần, mở **CMD bằng
+Sau khi đã cài MinGW-w64, CMake, Git và Docker Desktop, mở **CMD bằng
 Run as administrator** tại thư mục dự án rồi chạy duy nhất:
 
 ```cmd
 mingw32-make deploy
 ```
 
-Lệnh tự tìm MinGW tại `C:\msys64\mingw64\bin`, dùng vcpkg tại
-`%USERPROFILE%\vcpkg`, tự nhận IPv4 LAN, build ZTAS, chạy HTTPS/OPA/Locator,
-mở firewall và tạo tools máy khách. Nếu máy dùng vcpkg ở nơi khác, đặt
-`VCPKG_ROOT` một lần trước khi gọi lệnh.
+Lệnh tự tìm MinGW tại `C:\msys64\mingw64\bin`, tự bootstrap `.vcpkg/`, tự
+nhận IPv4 LAN, build ZTAS, chạy HTTPS/OPA/Locator, mở firewall và tạo tools máy
+khách.
 
-1. Cài **CMake**, **MinGW-w64 x64**, **Git**, **Docker Desktop**, vcpkg và
-   **GNU Make**. Thư mục `bin` của MinGW-w64 phải nằm trong `PATH`; kiểm tra
+1. Cài **CMake**, **MinGW-w64 x64**, **Git** và **Docker Desktop**. GNU Make
+   đi kèm MinGW-w64; thư mục `bin` của MinGW-w64 phải nằm trong `PATH`; kiểm tra
    được cả `g++.exe` và `mingw32-make.exe` từ CMD.
-2. Trong CMD, cài vcpkg một lần:
+2. Trong CMD, build trực tiếp:
 
    ```cmd
-   git clone https://github.com/microsoft/vcpkg "%USERPROFILE%\vcpkg"
-   call "%USERPROFILE%\vcpkg\bootstrap-vcpkg.bat"
-   ```
-
-3. Trong CMD, đặt `VCPKG_ROOT` rồi build:
-
-   ```cmd
-   set VCPKG_ROOT=C:\Users\<ten-ban>\vcpkg
-   set VCPKG_DEFAULT_TRIPLET=x64-mingw-static
    cd /d E:\ZTAS_PoC
-   rmdir /s /q build\windows
    mingw32-make build
    ```
 
@@ -114,10 +108,10 @@ các tài nguyên giao diện được cache cục bộ.
 `rmdir /s /q build\windows` chỉ xóa tệp build sinh bởi CMake. Cần chạy nó khi
 đổi từ một toolchain/triplet cũ (ví dụ `x64-windows`) sang MinGW-w64.
 
-Vcpkg tự đọc [vcpkg.json](vcpkg.json) và cài `cpp-httplib`,
+Vcpkg tự clone vào `.vcpkg/`, đọc [vcpkg.json](vcpkg.json) và cài `cpp-httplib`,
 `nlohmann-json`, OpenSSL và SQLite theo manifest khi CMake cấu hình lần đầu.
-Để giữ `VCPKG_ROOT` sau khi đóng CMD, đặt biến môi trường người dùng trỏ đến
-thư mục vcpkg đó.
+Không cần đặt `VCPKG_ROOT` toàn cục; dependency cache nằm trong `.vcpkg/` của
+project và đã được `.gitignore` loại trừ khỏi Git.
 
 Không cần thay đổi PowerShell Execution Policy vì dự án không chạy `.ps1`.
 

@@ -14,11 +14,12 @@ CADDY_BIN ?= C:\Tools\Caddy\caddy.exe
 HTTPS_HOST ?= ztas.ptit
 ZTAS_SERVER_IP ?=
 ZTAS_DNS_MODE ?=
+VCPKG_DIR := $(CURDIR)\.vcpkg
 
-.PHONY: help configure build provision docker-ready opa-up opa-logs env https-proxy deploy deploy-https client-installers client-bundle run demo logs stop down clean
+.PHONY: help bootstrap-vcpkg configure build provision docker-ready opa-up opa-logs env https-proxy deploy deploy-https client-installers client-bundle run demo logs stop down clean
 
 help:
-	@echo make build      Build ZTAS for Windows with the vcpkg preset
+	@echo make build      Bootstrap vcpkg, download C++ libraries and build ZTAS
 	@echo make provision Build and issue keys for registered devices
 	@echo make opa-up     Start OPA (Docker Desktop must already be running)
 	@echo make run        Build, provision, start OPA, ZTAS and local HTTPS proxy
@@ -29,8 +30,11 @@ help:
 	@echo make stop       Stop ztas.exe started for this PoC
 	@echo make down       Stop ZTAS and OPA
 
-configure:
-	@set "VCPKG_DEFAULT_TRIPLET=x64-mingw-static" && set "VCPKG_DEFAULT_HOST_TRIPLET=x64-mingw-static" && cmake --preset $(PLATFORM) -DVCPKG_TARGET_TRIPLET=x64-mingw-static -DCMAKE_MAKE_PROGRAM=mingw32-make -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+bootstrap-vcpkg:
+	@call scripts\bootstrap-vcpkg-windows.cmd
+
+configure: bootstrap-vcpkg
+	@set "VCPKG_ROOT=$(VCPKG_DIR)" && set "VCPKG_DEFAULT_TRIPLET=x64-mingw-static" && set "VCPKG_DEFAULT_HOST_TRIPLET=x64-mingw-static" && cmake --preset $(PLATFORM) -DCMAKE_TOOLCHAIN_FILE="$(VCPKG_DIR)\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-mingw-static -DCMAKE_MAKE_PROGRAM=mingw32-make -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
 
 build: configure
 	@cmake --build --preset $(PLATFORM) --parallel
@@ -104,11 +108,13 @@ CADDY_BIN ?= caddy
 HTTPS_HOST ?= ztas.ptit
 ZTAS_SERVER_IP ?=
 ZTAS_DNS_MODE ?=
+VCPKG_DIR := $(CURDIR)/.vcpkg
+VCPKG_TARGET_TRIPLET ?= arm64-osx
 
-.PHONY: help configure build provision docker-ready opa-up opa-logs env https-proxy deploy-https client-installers client-bundle run demo logs stop down clean
+.PHONY: help bootstrap-vcpkg configure build provision docker-ready opa-up opa-logs env https-proxy deploy-https client-installers client-bundle run demo logs stop down clean
 
 help:
-	@echo "make build      Build ZTAS for macOS"
+	@echo "make build      Bootstrap vcpkg, download C++ libraries and build ZTAS"
 	@echo "make provision Build and issue keys for registered devices"
 	@echo "make opa-up     Start OPA (Docker Desktop must already be running)"
 	@echo "make run        Build, provision, start OPA, ZTAS and local HTTPS proxy"
@@ -118,8 +124,15 @@ help:
 	@echo "make stop       Stop the ZTAS process started by make"
 	@echo "make down       Stop ZTAS and OPA"
 
-configure:
-	@cmake --preset $(PLATFORM)
+bootstrap-vcpkg:
+	@if [ ! -x "$(VCPKG_DIR)/vcpkg" ]; then \
+		command -v git >/dev/null 2>&1 || { echo "Can Git de tai vcpkg."; exit 1; }; \
+		if [ ! -d "$(VCPKG_DIR)" ]; then git clone https://github.com/microsoft/vcpkg "$(VCPKG_DIR)"; fi; \
+		"$(VCPKG_DIR)/bootstrap-vcpkg.sh" -disableMetrics; \
+	else echo "vcpkg da san sang."; fi
+
+configure: bootstrap-vcpkg
+	@cmake --preset $(PLATFORM) -DCMAKE_TOOLCHAIN_FILE="$(VCPKG_DIR)/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET="$(VCPKG_TARGET_TRIPLET)"
 
 build: configure
 	@cmake --build --preset $(PLATFORM) --parallel

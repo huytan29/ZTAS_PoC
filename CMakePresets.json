@@ -11,7 +11,7 @@
     },
     {
       "name": "macos",
-      "displayName": "macOS (Homebrew)",
+      "displayName": "macOS (vcpkg)",
       "inherits": "base",
       "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/build/macos",

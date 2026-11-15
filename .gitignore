@@ -1,4 +1,5 @@
 build/
+.vcpkg/
 data/audit.jsonl
 data/logs/
 data/archive/
