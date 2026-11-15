@@ -3,7 +3,22 @@ const message = document.querySelector("#connect-device-message");
 const submit = form.querySelector("button[type=submit]");
 let approvalPoll = 0;
 let waitingApproval = false;
-let retriedWithFreshIdentity = false;
+let connectionMode = "new";
+
+function setConnectionMode(mode) {
+  connectionMode = mode;
+  const isNew = mode === "new";
+  const accountKeyField = document.querySelector("#account-key-field");
+  accountKeyField.hidden = !isNew;
+  form.elements.account_key.required = isNew;
+  form.elements.account_key.value = "";
+  document.querySelector("#connect-device-intro").textContent = isNew
+    ? "Lần đầu cấp phát máy cần Account Key. Sau khi được duyệt, hệ thống tự đăng nhập và mở Tài liệu."
+    : "Máy đã được cấp chỉ cần tài khoản và mật khẩu. Nếu chứng thực trình duyệt bị mất, admin sẽ khôi phục đúng thiết bị cũ; không tạo máy mới.";
+  document.querySelectorAll("[data-connection-mode]").forEach(button => {
+    button.classList.toggle("connection-mode__option--active", button.dataset.connectionMode === mode);
+  });
+}
 
 function getDeviceId() {
   const stored = localStorage.getItem("ztas_connect_device_id");
@@ -13,11 +28,6 @@ function getDeviceId() {
   const value = `web-${random.slice(0, 24).toLowerCase()}`;
   localStorage.setItem("ztas_connect_device_id", value);
   return value;
-}
-
-function createFreshDeviceIdentity() {
-  localStorage.removeItem("ztas_connect_device_id");
-  return getDeviceId();
 }
 
 function deviceType() {
@@ -74,6 +84,7 @@ form.addEventListener("submit", async event => {
         username: form.elements.username.value.trim(),
         password: form.elements.password.value,
         account_key: form.elements.account_key.value.trim(),
+        connection_mode: connectionMode,
         device_id: getDeviceId(),
         device_name: deviceName(),
         device_type: deviceType()
@@ -89,25 +100,24 @@ form.addEventListener("submit", async event => {
     form.elements.account_key.value = "";
     message.textContent = data.status === "ALREADY_APPROVED"
       ? "Máy này đã được cấp quyền. Đang khởi tạo phiên đăng nhập…"
+      : data.status === "PENDING_BROWSER_PROOF_RECOVERY"
+        ? "Đã gửi yêu cầu khôi phục thiết bị cũ. Hệ thống sẽ tự đăng nhập sau khi admin xác nhận."
       : "Yêu cầu đã gửi. Chờ quản trị viên phê duyệt — hệ thống sẽ tự đăng nhập.";
     waitingApproval = true;
     waitForApproval();
   } catch (error) {
-    if (error.code === "DEVICE_BROWSER_PROOF_REQUIRED") {
-      createFreshDeviceIdentity();
-      if (!retriedWithFreshIdentity) {
-        retriedWithFreshIdentity = true;
-        message.textContent = "Trình duyệt này chưa có chứng thực của thiết bị cũ. Đang tạo yêu cầu đăng ký mới…";
-        window.setTimeout(() => form.requestSubmit(), 0);
-      } else {
-        message.textContent = "Không thể khôi phục chứng thực thiết bị cũ. Hãy tải lại trang và gửi yêu cầu đăng ký lại.";
-      }
-    } else message.textContent = error.message === "INVALID_ACCOUNT_ENROLLMENT_CREDENTIALS"
+    message.textContent = error.message === "INVALID_ACCOUNT_ENROLLMENT_CREDENTIALS"
       ? "Tên đăng nhập, mật khẩu hoặc Account Key không đúng."
+      : error.message === "INVALID_ACCOUNT_PASSWORD"
+        ? "Tên đăng nhập hoặc mật khẩu không đúng."
       : error.message;
   } finally {
     submit.disabled = waitingApproval;
   }
+});
+
+document.querySelectorAll("[data-connection-mode]").forEach(button => {
+  button.addEventListener("click", () => setConnectionMode(button.dataset.connectionMode));
 });
 
 window.addEventListener("beforeunload", () => window.clearTimeout(approvalPoll));

@@ -4,7 +4,9 @@
 
 #include <openssl/evp.h>
 #include <openssl/rand.h>
+#include <openssl/sha.h>
 
+#include <algorithm>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
@@ -104,6 +106,17 @@ std::string hash_key(const std::string& key) {
     return "pbkdf2_sha256$" + std::to_string(iterations) + "$" +
         hex_encode(salt, sizeof(salt)) + "$" +
         hex_encode(derived, sizeof(derived));
+}
+
+std::string hash_browser_proof(const std::string& proof) {
+    if (proof.empty()) return "";
+    unsigned char digest[SHA256_DIGEST_LENGTH];
+    SHA256(
+        reinterpret_cast<const unsigned char*>(proof.data()),
+        proof.size(),
+        digest
+    );
+    return hex_encode(digest, sizeof(digest));
 }
 
 json read_json(const fs::path& path) {
@@ -445,6 +458,85 @@ DeviceOperationResult DeviceManagementService::update_allowed_ip(
         };
     } catch (const std::exception& error) {
         return failure("DEVICE_IP_UPDATE_ERROR", error.what());
+    }
+}
+
+DeviceOperationResult DeviceManagementService::recover_browser_proof(
+    const std::string& device_id,
+    const std::string& browser_device_proof
+) const {
+    if (browser_device_proof.empty()) {
+        return failure(
+            "INVALID_BROWSER_PROOF",
+            "Bang chung trinh duyet khong duoc de trong"
+        );
+    }
+    return recover_browser_proof_hash(
+        device_id, hash_browser_proof(browser_device_proof)
+    );
+}
+
+DeviceOperationResult DeviceManagementService::recover_browser_proof_hash(
+    const std::string& device_id,
+    const std::string& browser_proof_hash
+) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    if (!valid_device_id(device_id)) {
+        return failure("INVALID_DEVICE_ID", "Device ID khong hop le");
+    }
+    if (browser_proof_hash.size() != SHA256_DIGEST_LENGTH * 2 ||
+        !std::all_of(
+            browser_proof_hash.begin(), browser_proof_hash.end(),
+            [](unsigned char value) { return std::isxdigit(value); }
+        )) {
+        return failure("INVALID_BROWSER_PROOF", "Hash chung thuc trinh duyet khong hop le");
+    }
+
+    try {
+        json devices_policy = read_json(devices_policy_file_);
+        if (!devices_policy.contains("devices") ||
+            !devices_policy.at("devices").contains(device_id)) {
+            return failure("DEVICE_NOT_FOUND", "Khong tim thay thiet bi trong policy");
+        }
+        const json& device = devices_policy["devices"][device_id];
+        if (!device.value("registered", false) ||
+            device.value("lifecycle_status", "ACTIVE") != "ACTIVE") {
+            return failure(
+                "DEVICE_NOT_ACTIVE",
+                "Thiet bi chua hoat dong hoac da bi thu hoi"
+            );
+        }
+
+        json credentials = read_json(credentials_file_);
+        if (!credentials.contains("devices") ||
+            !credentials["devices"].contains(device_id) ||
+            !credentials["devices"][device_id].value("active", false)) {
+            return failure(
+                "DEVICE_CREDENTIAL_NOT_ACTIVE",
+                "Thong tin xac thuc thiet bi khong con hoat dong"
+            );
+        }
+
+        // Chi thay hash Proof; Device Key va cac policy dang dung duoc giu nguyen.
+        credentials["devices"][device_id]["browser_proof_hash"] =
+            browser_proof_hash;
+        write_json(credentials_file_, credentials);
+
+        return {
+            true,
+            "DEVICE_BROWSER_PROOF_RECOVERED",
+            "Da khoi phuc chung thuc trinh duyet cho thiet bi da dang ky",
+            device_id,
+            "",
+            device.value("trust_level", 0),
+            device.value("location_id", ""),
+            device.value("device_name", device_id),
+            device.value("device_type", "unknown"),
+            device.value("enrollment_profile", "manual")
+        };
+    } catch (const std::exception& error) {
+        return failure("DEVICE_BROWSER_PROOF_RECOVERY_ERROR", error.what());
     }
 }
 

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ZTAS | Kết nối thiết bị</title>
   <link rel="stylesheet" href="/assets/admin-login.css">
-  <script defer src="/assets/connect-device.js?v=3"></script>
+  <script defer src="/assets/connect-device.js?v=4"></script>
 </head>
 <body>
   <main class="login-shell">
@@ -13,16 +13,20 @@
       <div class="login-brand"><span>◆</span>PoC PTIT Security Console</div>
       <p class="eyebrow">ĐĂNG KÝ THIẾT BỊ</p>
       <h1 id="connect-title">Kết nối máy này</h1>
-      <p class="login-intro">Nhập thông tin tài khoản và Account Key do quản trị viên cấp. Sau khi được duyệt, hệ thống tự đăng nhập và mở Tài liệu.</p>
+      <p class="login-intro" id="connect-device-intro">Lần đầu cấp phát máy cần Account Key. Máy đã cấp chỉ dùng tài khoản và mật khẩu; admin xác nhận khôi phục trên đúng thiết bị cũ.</p>
 
       <form id="connect-device-form">
+        <div class="connection-mode" role="group" aria-label="Loại kết nối">
+          <button class="connection-mode__option connection-mode__option--active" type="button" data-connection-mode="new">Tài khoản / máy mới</button>
+          <button class="connection-mode__option" type="button" data-connection-mode="existing">Thiết bị đã cấp</button>
+        </div>
         <label>Tên đăng nhập
           <input name="username" autocomplete="username" required autofocus>
         </label>
         <label>Mật khẩu
           <input name="password" type="password" autocomplete="current-password" required>
         </label>
-        <label>Account Key
+        <label id="account-key-field">Account Key
           <input name="account_key" type="password" autocomplete="off" spellcheck="false" required>
         </label>
         <p class="message" id="connect-device-message" role="alert"></p>

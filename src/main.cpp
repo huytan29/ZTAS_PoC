@@ -576,6 +576,20 @@ std::string create_browser_device_proof() {
     return proof;
 }
 
+bool account_allows_device(
+    const AccessSubject& subject,
+    const std::string& device_id
+) {
+    const auto has_id = [&subject](const std::string& id) {
+        return std::find(
+            subject.allowed_device_ids.begin(),
+            subject.allowed_device_ids.end(),
+            id
+        ) != subject.allowed_device_ids.end();
+    };
+    return has_id(device_id) || has_id("*");
+}
+
 std::optional<AccessSubject> authenticate_request(
     const httplib::Request& request,
     const AuthService& auth_service,
@@ -2162,6 +2176,7 @@ int main() {
         &auth_service,
         &discovery_service,
         &device_registry,
+        &device_management_service,
         &device_security_settings,
         &audit_logger
     ](
@@ -2188,35 +2203,57 @@ int main() {
             const std::string account_username = body.value("username", "");
             const std::string account_password = body.value("password", "");
             const std::string account_key = body.value("account_key", "");
+            const std::string connection_mode = body.value(
+                "connection_mode", "new"
+            );
+            if (connection_mode != "new" && connection_mode != "existing") {
+                send_json(response, 400, {
+                    {"error", "INVALID_CONNECTION_MODE"},
+                    {"message", "Che do ket noi khong hop le"}
+                });
+                return;
+            }
             if (account_username.empty() || account_password.empty() ||
-                account_key.empty()) {
+                (connection_mode == "new" && account_key.empty())) {
                 send_json(response, 401, {
                     {"error", "ACCOUNT_ENROLLMENT_CREDENTIALS_REQUIRED"},
-                    {"message", "May moi can tai khoan, mat khau va Account Key"}
+                    {"message", connection_mode == "new"
+                        ? "May moi can tai khoan, mat khau va Account Key"
+                        : "Can tai khoan va mat khau de khoi phuc thiet bi cu"}
                 });
                 return;
             }
 
-            const auto subject = auth_service.authenticate_device_enrollment(
-                account_username, account_password, account_key
-            );
+            const auto subject = connection_mode == "new"
+                ? auth_service.authenticate_device_enrollment(
+                    account_username, account_password, account_key
+                )
+                : auth_service.authenticate(account_username, account_password);
             if (!subject.has_value()) {
                 audit_logger.write({
                     {"event_type", "DEVICE_CONNECTION_DENY"},
                     {"device_id", device_id},
                     {"username", account_username},
                     {"source_ip", client_source_ip(request)},
-                    {"reason_code", "INVALID_ACCOUNT_ENROLLMENT_CREDENTIALS"},
+                    {"reason_code", connection_mode == "new"
+                        ? "INVALID_ACCOUNT_ENROLLMENT_CREDENTIALS"
+                        : "INVALID_ACCOUNT_PASSWORD"},
                     {"severity", "high"}
                 });
                 send_json(response, 401, {
-                    {"error", "INVALID_ACCOUNT_ENROLLMENT_CREDENTIALS"},
-                    {"message", "Tai khoan, mat khau hoac Account Key khong dung"}
+                    {"error", connection_mode == "new"
+                        ? "INVALID_ACCOUNT_ENROLLMENT_CREDENTIALS"
+                        : "INVALID_ACCOUNT_PASSWORD"},
+                    {"message", connection_mode == "new"
+                        ? "Tai khoan, mat khau hoac Account Key khong dung"
+                        : "Tai khoan hoac mat khau khong dung"}
                 });
                 return;
             }
             requested_username = subject->username;
-            enrollment_profile = "account-key";
+            enrollment_profile = connection_mode == "new"
+                ? "account-key"
+                : "account-password-recovery";
             enrollment_verified = true;
 
             std::string browser_device_proof = read_cookie_value(
@@ -2226,17 +2263,123 @@ int main() {
             // Yeu cau ket noi la thao tac mot lan. Kiem tra nay dat sau
             // xac minh tai khoan de khong lo trang thai cua mot device_id.
             if (device_registry.is_active_registered(device_id)) {
-                // Khong tu chon mot thiet bi chi vi tai khoan gan duy nhat
-                // voi no. Trinh duyet phai chung minh dang so huu bang chung
-                // da duoc cap khi yeu cau ket noi nay duoc phe duyet.
+                // Day phai la tai khoan duoc gan thiet bi (hoac admin "*").
+                // Dieu nay ngan Account Key hop le cua tai khoan A tu khoi
+                // phuc proof cua thiet bi dang gan cho tai khoan B.
+                if (!account_allows_device(*subject, device_id)) {
+                    audit_logger.write({
+                        {"event_type", "DEVICE_BROWSER_PROOF_RECOVERY_DENY"},
+                        {"device_id", device_id},
+                        {"username", subject->username},
+                        {"source_ip", client_source_ip(request)},
+                        {"reason_code", "DEVICE_ACCOUNT_BINDING_REQUIRED"},
+                        {"severity", "high"}
+                    });
+                    send_json(response, 403, {
+                        {"error", "DEVICE_ACCOUNT_BINDING_REQUIRED"},
+                        {"message", "Tai khoan nay chua duoc gan cho thiet bi da dang ky"}
+                    });
+                    return;
+                }
+
+                // Cookie HttpOnly co the bi xoa khi nguoi dung don du lieu
+                // trinh duyet. Voi tai khoan + mat khau + Account Key dung
+                // va lien ket tai khoan-thiet bi hop le, chi cap lai proof
+                // tren CHINH device_id cu. Khong sinh device/key hay dong
+                // dashboard moi.
                 if (!device_registry.verify_browser_proof(
                         device_id, browser_device_proof
                     )) {
-                    send_json(response, 403, {
-                        {"error", "DEVICE_BROWSER_PROOF_REQUIRED"},
-                        {"message", "Trinh duyet nay chua duoc cap phat cho thiet bi da dang ky. Hay dang ky nhu mot thiet bi moi va cho admin phe duyet."}
+                    browser_device_proof = create_browser_device_proof();
+                    if (browser_device_proof.empty()) {
+                        send_json(response, 500, {
+                            {"error", "DEVICE_PROOF_GENERATION_FAILED"}
+                        });
+                        return;
+                    }
+
+                    // Tai khoan cu khong bat nguoi dung nho Account Key.
+                    // Thay vao do, server luu mot yeu cau KHOI PHUC gan vao
+                    // chinh device_id cu. Admin se duyet proof moi, khong
+                    // cap phat mot thiet bi hay Device Key khac.
+                    if (connection_mode == "existing") {
+                        const DiscoveryResult recovery_request =
+                            discovery_service.record_attempt(
+                                device_id,
+                                profile_location,
+                                client_source_ip(request),
+                                request.has_header("User-Agent")
+                                    ? request.get_header_value("User-Agent")
+                                    : "unknown",
+                                "",
+                                body.value("device_name", ""),
+                                body.value("device_type", "unknown"),
+                                "account-password-recovery",
+                                requested_username,
+                                true,
+                                browser_device_proof
+                            );
+                        if (!recovery_request.success) {
+                            send_json(response, 500, {
+                                {"error", "DEVICE_RECOVERY_REQUEST_FAILED"},
+                                {"message", "Khong the luu yeu cau khoi phuc thiet bi"}
+                            });
+                            return;
+                        }
+                        response.set_header(
+                            "Set-Cookie",
+                            "ZTAS_DEVICE_PROOF=" + browser_device_proof +
+                                "; Path=/; Max-Age=2592000; HttpOnly; SameSite=Strict" +
+                                secure_cookie_attribute()
+                        );
+                        const std::string recovery_session = auth_service.issue_token(*subject);
+                        response.set_header(
+                            "Set-Cookie",
+                            "ZTAS_SESSION_TOKEN=" + recovery_session +
+                                "; Path=/; Max-Age=900; HttpOnly; SameSite=Strict" +
+                                secure_cookie_attribute()
+                        );
+                        audit_logger.write({
+                            {"event_type", "DEVICE_BROWSER_PROOF_RECOVERY_REQUESTED"},
+                            {"actor", subject->username},
+                            {"device_id", device_id},
+                            {"source_ip", client_source_ip(request)},
+                            {"reason_code", "ACCOUNT_PASSWORD_VERIFIED"},
+                            {"severity", "high"}
+                        });
+                        send_json(response, 202, {
+                            {"status", "PENDING_BROWSER_PROOF_RECOVERY"},
+                            {"device_id", device_id},
+                            {"message", "Da gui yeu cau khoi phuc thiet bi cu. Cho quan tri vien xac nhan."}
+                        });
+                        return;
+                    }
+
+                    const DeviceOperationResult recovery =
+                        device_management_service.recover_browser_proof(
+                            device_id, browser_device_proof
+                        );
+                    if (!recovery.success) {
+                        send_json(response, 409, {
+                            {"error", recovery.code},
+                            {"message", recovery.message}
+                        });
+                        return;
+                    }
+                    response.set_header(
+                        "Set-Cookie",
+                        "ZTAS_DEVICE_PROOF=" + browser_device_proof +
+                            "; Path=/; Max-Age=2592000; HttpOnly; SameSite=Strict" +
+                            secure_cookie_attribute()
+                    );
+                    audit_logger.write({
+                        {"event_type", "DEVICE_BROWSER_PROOF_RECOVERED"},
+                        {"actor", subject->username},
+                        {"device_id", device_id},
+                        {"source_ip", client_source_ip(request)},
+                        {"reason_code", "ACCOUNT_PASSWORD_AND_KEY_VERIFIED"},
+                        {"severity", "high"}
                     });
-                    return;
                 }
                 const std::string enrollment_session = auth_service.issue_token(*subject);
                 response.set_header(
@@ -2377,6 +2520,112 @@ int main() {
             });
         }
         send_json(response, 200, {{"requests", requests}});
+    });
+
+    // Admin duyet khôi phuc Browser Proof cho thiet bi CU. Luong nay khong
+    // goi enroll(), vi nhu vay se tao Device Key/bản ghi moi va gay trung
+    // thiet bi tren Dashboard.
+    server.Post("/api/devices/browser-proof-recovery", [
+        &auth_service,
+        &device_registry,
+        &device_management_service,
+        &discovery_service,
+        &audit_logger
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto admin =
+            authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) return;
+
+        try {
+            const json body = json::parse(request.body);
+            const std::string device_id = body.value("device_id", "");
+            std::optional<PendingDeviceRequest> pending_request;
+            for (const auto& pending : discovery_service.list_pending()) {
+                if (pending.device_id == device_id &&
+                    pending.enrollment_profile == "account-password-recovery") {
+                    pending_request = pending;
+                    break;
+                }
+            }
+            if (!pending_request.has_value()) {
+                send_json(response, 404, {
+                    {"error", "DEVICE_RECOVERY_REQUEST_NOT_FOUND"},
+                    {"message", "Khong tim thay yeu cau khoi phuc dang cho cua thiet bi"}
+                });
+                return;
+            }
+            if (!device_registry.is_active_registered(device_id)) {
+                send_json(response, 409, {
+                    {"error", "DEVICE_NOT_ACTIVE"},
+                    {"message", "Thiet bi cu khong con hoat dong de khoi phuc"}
+                });
+                return;
+            }
+            if (!auth_service.is_device_assigned_to_user(
+                    pending_request->requested_username, device_id
+                )) {
+                send_json(response, 403, {
+                    {"error", "DEVICE_ACCOUNT_BINDING_REQUIRED"},
+                    {"message", "Tai khoan yeu cau khong con duoc gan voi thiet bi nay"}
+                });
+                return;
+            }
+            const auto proof_hash = discovery_service.browser_proof_hash(device_id);
+            if (!proof_hash.has_value()) {
+                send_json(response, 409, {
+                    {"error", "DEVICE_RECOVERY_PROOF_NOT_FOUND"},
+                    {"message", "Khong tim thay chung thuc moi cua trinh duyet"}
+                });
+                return;
+            }
+
+            const DeviceOperationResult recovery =
+                device_management_service.recover_browser_proof_hash(
+                    device_id, *proof_hash
+                );
+            if (!recovery.success) {
+                send_json(response, 409, {
+                    {"error", recovery.code},
+                    {"message", recovery.message}
+                });
+                return;
+            }
+
+            // Key duoc doi sau khi admin xac nhan phuc hoi. Key nay chi can
+            // khi cap phat MAY MOI; nguoi dung khong can nho de dung may cu.
+            const AccountKeyIssueResult key_result =
+                auth_service.issue_account_key(pending_request->requested_username);
+            if (!key_result.success) {
+                send_json(response, 500, {
+                    {"error", key_result.code},
+                    {"message", key_result.message}
+                });
+                return;
+            }
+            const bool resolved = discovery_service.resolve(device_id);
+            audit_logger.write({
+                {"event_type", "DEVICE_BROWSER_PROOF_RECOVERY_APPROVED"},
+                {"actor", admin->username},
+                {"username", pending_request->requested_username},
+                {"device_id", device_id},
+                {"source_ip", pending_request->source_ip},
+                {"reason_code", "EXISTING_DEVICE_PROOF_REISSUED"},
+                {"account_key_rotated", true},
+                {"severity", "high"}
+            });
+            send_json(response, 200, {
+                {"message", "Da khoi phuc thiet bi cu va cap Account Key moi"},
+                {"device_id", device_id},
+                {"username", key_result.username},
+                {"account_key", key_result.account_key},
+                {"pending_request_resolved", resolved}
+            });
+        } catch (const json::exception&) {
+            send_json(response, 400, {{"error", "INVALID_JSON"}});
+        }
     });
 
     server.Post("/api/devices", [

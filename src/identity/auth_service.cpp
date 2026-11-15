@@ -469,6 +469,31 @@ std::optional<AccessSubject> AuthService::authenticate_device_enrollment(
     return std::nullopt;
 }
 
+bool AuthService::is_device_assigned_to_user(
+    const std::string& username,
+    const std::string& device_id
+) const {
+    if (username.empty() || device_id.empty()) return false;
+    try {
+        std::lock_guard<std::mutex> lock(mutex_);
+        std::ifstream file(users_file_);
+        const json users_data = json::parse(file);
+        for (const auto& user : users_data.at("users")) {
+            if (user.value("username", "") != username) continue;
+            const auto allowed = user.value(
+                "allowed_device_ids", std::vector<std::string>{}
+            );
+            return std::find(allowed.begin(), allowed.end(), device_id) !=
+                    allowed.end() ||
+                std::find(allowed.begin(), allowed.end(), "*") !=
+                    allowed.end();
+        }
+    } catch (const std::exception&) {
+        return false;
+    }
+    return false;
+}
+
 bool AuthService::admin_password_setup_required() const {
     std::lock_guard<std::mutex> lock(mutex_);
 

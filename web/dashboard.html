@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="/assets/common.css">
   <link rel="stylesheet" href="/assets/dashboard.css?v=7">
   <script defer src="/assets/common.js"></script>
-  <script defer src="/assets/dashboard.js?v=10"></script>
+  <script defer src="/assets/dashboard.js?v=11"></script>
 </head>
 <body>
   <header class="topbar">
@@ -169,6 +169,15 @@
       <label class="form-field">Device Key<input id="issued-device-key" readonly></label>
       <div class="credential-actions"><button class="button button--secondary" id="copy-device-key">Sao chép key</button><button class="button button--secondary" id="download-device-env">Tải tệp .env</button></div>
       <footer class="modal__footer"><button class="button button--primary" type="button" data-close-dialog="device-key-dialog">Đã lưu khóa</button></footer>
+    </section>
+  </dialog>
+
+  <dialog class="modal" id="browser-proof-recovery-dialog">
+    <section class="modal__card">
+      <header class="modal__header"><div><h2>Đã khôi phục thiết bị cũ</h2><p id="recovery-key-message"></p></div><button class="icon-button" type="button" data-close-dialog="browser-proof-recovery-dialog">×</button></header>
+      <label class="form-field">Account Key mới<input id="recovered-account-key" readonly></label>
+      <div class="credential-actions"><button class="button button--secondary" id="copy-recovered-account-key">Sao chép key</button></div>
+      <footer class="modal__footer"><button class="button button--primary" type="button" data-close-dialog="browser-proof-recovery-dialog">Đã lưu key</button></footer>
     </section>
   </dialog>
 

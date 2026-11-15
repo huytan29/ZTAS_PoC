@@ -310,13 +310,15 @@ function renderConnectionRequests(requests) {
       <thead><tr><th>Thiết bị yêu cầu</th><th>Profile / tài khoản</th><th>Vùng mạng</th><th>IP nguồn</th><th>Lần đầu / gần nhất</th><th>Thông tin máy khách</th><th>Thao tác</th></tr></thead>
       <tbody>${requests.map(request => `
         <tr>
-          <td><strong>${escapeHtml(request.device_name || request.device_id)}</strong><span class="request-state"><i class="status-dot status-dot--warning"></i>${request.enrollment_profile === "account-key" ? "Tài khoản + Account Key hợp lệ · chờ duyệt" : request.enrollment_verified ? "Thông tin đăng ký hợp lệ · chờ duyệt" : "Chờ phân loại"}</span><span class="request-id">${escapeHtml(request.device_id)} · ${escapeHtml(request.device_type || "unknown")}</span></td>
+          <td><strong>${escapeHtml(request.device_name || request.device_id)}</strong><span class="request-state"><i class="status-dot status-dot--warning"></i>${request.enrollment_profile === "account-password-recovery" ? "Khôi phục thiết bị cũ · tài khoản/mật khẩu hợp lệ" : request.enrollment_profile === "account-key" ? "Tài khoản + Account Key hợp lệ · chờ duyệt" : request.enrollment_verified ? "Thông tin đăng ký hợp lệ · chờ duyệt" : "Chờ phân loại"}</span><span class="request-id">${escapeHtml(request.device_id)} · ${escapeHtml(request.device_type || "unknown")}</span></td>
           <td><strong>${escapeHtml(request.enrollment_profile || "manual")}</strong><span class="request-account">${escapeHtml(request.requested_username || "Chưa gán tài khoản")}</span></td>
           <td><span class="device-zone">${escapeHtml(request.location_id)}</span></td>
           <td><span class="device-zone">${escapeHtml(request.source_ip)}</span></td>
           <td class="request-time"><strong>${formatTime(request.first_seen)}</strong><span>Cập nhật: ${formatTime(request.last_seen)}</span></td>
           <td class="request-agent" title="${escapeHtml(request.user_agent)}">${escapeHtml(request.user_agent)}</td>
-          <td><button class="button button--primary button--small" data-approve-request="${escapeHtml(request.device_id)}" data-request-location="${escapeHtml(request.location_id)}" data-request-profile="${escapeHtml(request.enrollment_profile || "manual")}" data-request-user="${escapeHtml(request.requested_username || "")}" data-request-name="${escapeHtml(request.device_name || request.device_id)}" data-request-type="${escapeHtml(request.device_type || "unknown")}" data-request-ip="${escapeHtml(request.source_ip || "")}">Phân loại &amp; cấp quyền</button></td>
+          <td>${request.enrollment_profile === "account-password-recovery"
+            ? `<button class="button button--primary button--small" data-recover-browser-proof="${escapeHtml(request.device_id)}" data-recovery-user="${escapeHtml(request.requested_username || "")}">Khôi phục thiết bị cũ</button>`
+            : `<button class="button button--primary button--small" data-approve-request="${escapeHtml(request.device_id)}" data-request-location="${escapeHtml(request.location_id)}" data-request-profile="${escapeHtml(request.enrollment_profile || "manual")}" data-request-user="${escapeHtml(request.requested_username || "")}" data-request-name="${escapeHtml(request.device_name || request.device_id)}" data-request-type="${escapeHtml(request.device_type || "unknown")}" data-request-ip="${escapeHtml(request.source_ip || "")}">Phân loại &amp; cấp quyền</button>`}</td>
         </tr>`).join("")}</tbody>
     </table>`;
 
@@ -333,6 +335,34 @@ function renderConnectionRequests(requests) {
       ));
     });
   });
+  container.querySelectorAll("[data-recover-browser-proof]").forEach(button => {
+    button.addEventListener("click", () => {
+      requireAdmin(() => recoverBrowserProof(
+        button.dataset.recoverBrowserProof,
+        button.dataset.recoveryUser
+      ));
+    });
+  });
+}
+
+async function recoverBrowserProof(deviceId, username) {
+  if (!confirm(`Khôi phục chứng thực cho ${deviceId}? Thiết bị cũ giữ nguyên quyền. Account Key cũ của ${username} sẽ bị thu hồi và cấp lại.`)) return;
+  try {
+    const response = await fetch("/api/devices/browser-proof-recovery", {
+      method: "POST",
+      headers: apiHeaders(),
+      body: JSON.stringify({ device_id: deviceId })
+    });
+    const data = await parseResponse(response);
+    document.querySelector("#recovered-account-key").value = data.account_key;
+    document.querySelector("#recovery-key-message").textContent =
+      `Account Key mới của ${data.username}. Chỉ dùng khi cấp phát một máy mới; máy cũ tự đăng nhập sau khi tải lại.`;
+    showDialog("browser-proof-recovery-dialog");
+    refreshDashboard();
+    refreshConnectionRequests();
+  } catch (error) {
+    alert(error.message);
+  }
 }
 
 function renderMfaRequests(requests, lockedDevices = []) {
@@ -864,6 +894,12 @@ document.querySelector("#copy-device-key").addEventListener("click", async () =>
   document.querySelector("#copy-device-key").textContent = "Đã sao chép";
 });
 
+document.querySelector("#copy-recovered-account-key").addEventListener("click", async () => {
+  const input = document.querySelector("#recovered-account-key");
+  await navigator.clipboard.writeText(input.value);
+  document.querySelector("#copy-recovered-account-key").textContent = "Đã sao chép";
+});
+
 document.querySelector("#download-device-env").addEventListener("click", () => {
   if (!issuedCredential) return;
   const content = [
@@ -887,6 +923,11 @@ document.querySelector("#device-key-dialog").addEventListener("close", () => {
   issuedCredential = null;
   document.querySelector("#issued-device-key").value = "";
   document.querySelector("#copy-device-key").textContent = "Sao chép key";
+});
+
+document.querySelector("#browser-proof-recovery-dialog").addEventListener("close", () => {
+  document.querySelector("#recovered-account-key").value = "";
+  document.querySelector("#copy-recovered-account-key").textContent = "Sao chép key";
 });
 
 document.querySelector("#logout-button").addEventListener("click", async () => {

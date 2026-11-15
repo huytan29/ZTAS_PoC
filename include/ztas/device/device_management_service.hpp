@@ -51,6 +51,22 @@ public:
         const std::string& allowed_ip_address
     ) const;
 
+    // Khoi phuc bang chung trinh duyet cho THIET BI DANG HOAT DONG. Khong tao
+    // Device ID moi, khong doi Device Key, khong thay doi trust/policy hay
+    // lien ket tai khoan. Nguoi goi phai xac minh tai khoan da duoc gan voi
+    // thiet bi truoc khi su dung ham nay.
+    DeviceOperationResult recover_browser_proof(
+        const std::string& device_id,
+        const std::string& browser_device_proof
+    ) const;
+
+    // Bien the noi bo dung khi admin duyet yeu cau khoi phuc. Chi nhan SHA-256
+    // cua proof da luu trong hang doi; proof dang ro khong nam trong storage.
+    DeviceOperationResult recover_browser_proof_hash(
+        const std::string& device_id,
+        const std::string& browser_proof_hash
+    ) const;
+
     // Chan co chu dich: vo hieu hoa khoa va ghi lifecycle BLOCKED trong policy.
     DeviceOperationResult block(
         const std::string& device_id

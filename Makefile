@@ -34,6 +34,7 @@ bootstrap-vcpkg:
 	@call scripts\bootstrap-vcpkg-windows.cmd
 
 configure: bootstrap-vcpkg
+	@powershell -NoProfile -Command "$$state = '$(BUILD_DIR)\CMakeFiles'; $$system = Get-ChildItem -Path $$state -Filter CMakeSystem.cmake -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1; $$expected = '$(VCPKG_DIR)'.Replace('\','/'); if ($$system -and ((Get-Content $$system.FullName -Raw) -notlike ('*' + $$expected + '*'))) { Write-Output '[INFO] Xoa CMake cache cu dang tro toi vcpkg khac.'; Remove-Item -LiteralPath '$(BUILD_DIR)' -Recurse -Force }"
 	@set "VCPKG_ROOT=$(VCPKG_DIR)" && set "VCPKG_DEFAULT_TRIPLET=x64-mingw-static" && set "VCPKG_DEFAULT_HOST_TRIPLET=x64-mingw-static" && cmake --preset $(PLATFORM) -DCMAKE_TOOLCHAIN_FILE="$(VCPKG_DIR)\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-mingw-static -DCMAKE_MAKE_PROGRAM=mingw32-make -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
 
 build: configure

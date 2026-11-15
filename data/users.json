@@ -21,10 +21,11 @@
       "username": "ubuntu1"
     },
     {
-      "account_key_hash": "pbkdf2_sha256$200000$6fe075d546371c21b335d25eda4a84af$bd134d6a9da9f91d1b325c28b1093800b1e6a72587d2e601f27e8ea828cb1a41",
-      "account_key_issued_at": 1794581366,
+      "account_key_hash": "pbkdf2_sha256$200000$ef84255e0510b58f586b9a43c76e1e51$88fe799ded03c3de20d6e19992b0c876d751fad4342b147c0346ad3902dd6983",
+      "account_key_issued_at": 1794750335,
       "allowed_device_ids": [
-        "web-17945762606205e503221436"
+        "web-17945762606205e503221436",
+        "web-8c51c3f2796246c2a47f0287"
       ],
       "expires_at": 0,
       "password_hash": "pbkdf2_sha256$200000$00832046518204f942acca6f019b1389$63b19cec3d99c93cefc27e26a4acc1e8d5a6b33565c714f79b1db79f96e8559c",

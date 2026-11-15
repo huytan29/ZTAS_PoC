@@ -9,6 +9,10 @@ body { min-height:100vh; margin:0; display:grid; place-items:center; padding:24p
 h1 { margin:0; font-size:clamp(25px,5vw,30px); letter-spacing:-.7px; }
 .login-intro { margin:8px 0 22px; color:var(--muted); }
 form { display:grid; gap:14px; }
+.connection-mode { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.connection-mode__option { padding:9px 8px; border:1px solid #cbd8e6; background:#f6f9fd; color:#536982; font-size:12px; }
+.connection-mode__option:hover { background:#eaf1fc; color:#2356b9; }
+.connection-mode__option--active { border-color:#2868e7; background:#eaf1ff; color:#1f5ed6; box-shadow:inset 0 0 0 1px #2868e7; }
 label { display:grid; gap:6px; color:#40536a; font-size:12px; font-weight:720; }
 input { width:100%; padding:11px; border:1px solid #cbd8e6; border-radius:8px; color:var(--ink); font:inherit; }
 input:focus { outline:2px solid #a9c8ff; border-color:var(--blue); }

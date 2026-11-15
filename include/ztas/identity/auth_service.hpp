@@ -65,6 +65,13 @@ public:
         const std::string& account_key
     ) const;
 
+    // Kiem tra lai lien ket tai khoan-thiet bi khi admin duyet khoi phuc
+    // Browser Proof. Khong yeu cau va khong lam lo Account Key.
+    bool is_device_assigned_to_user(
+        const std::string& username,
+        const std::string& device_id
+    ) const;
+
     std::string issue_token(
         const AccessSubject& subject
     ) const;
