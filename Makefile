@@ -13,8 +13,9 @@ PROVISION_BIN := $(BUILD_DIR)\provision_devices$(EXE)
 CADDY_BIN ?= C:\Tools\Caddy\caddy.exe
 HTTPS_HOST ?= ztas.ptit
 ZTAS_SERVER_IP ?=
+ZTAS_DNS_MODE ?=
 
-.PHONY: help configure build provision docker-ready opa-up opa-logs env https-proxy deploy-https run demo logs stop down clean
+.PHONY: help configure build provision docker-ready opa-up opa-logs env https-proxy deploy deploy-https client-installers client-bundle run demo logs stop down clean
 
 help:
 	@echo make build      Build ZTAS for Windows with the vcpkg preset
@@ -22,6 +23,8 @@ help:
 	@echo make opa-up     Start OPA (Docker Desktop must already be running)
 	@echo make run        Build, provision, start OPA, ZTAS and local HTTPS proxy
 	@echo make deploy-https Run HTTPS bootstrap; use ZTAS_SERVER_IP=x.x.x.x when needed
+	@echo make deploy      One-command Windows Server deployment (run elevated CMD)
+	@echo make client-installers ZTAS_SERVER_IP=x.x.x.x: create one-click client installer folder
 	@echo make logs       Follow today's audit log
 	@echo make stop       Stop ztas.exe started for this PoC
 	@echo make down       Stop ZTAS and OPA
@@ -58,6 +61,14 @@ https-proxy:
 deploy-https:
 	@call scripts\deploy-https-windows.cmd "$(ZTAS_SERVER_IP)"
 
+deploy:
+	@call scripts\deploy-server-windows.cmd
+
+client-installers:
+	@call scripts\create-client-bundle-windows.cmd "$(ZTAS_SERVER_IP)" "$(ZTAS_DNS_MODE)"
+
+client-bundle: client-installers
+
 run: provision opa-up env
 	@powershell -NoProfile -Command "$$running = $$false; try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://127.0.0.1:8020/health | Out-Null; $$running = $$true } catch {}; if ($$running) { Write-Output 'ZTAS dang chay tren cong 8020 do mot tien trinh khac quan ly.' } else { $$line = Get-Content 'runtime/ztas.env' | Where-Object { $$_ -like 'APP_TOKEN_SECRET=*' } | Select-Object -First 1; if (-not $$line) { throw 'Khong tim thay APP_TOKEN_SECRET trong runtime/ztas.env' }; $$env:APP_TOKEN_SECRET = $$line.Substring('APP_TOKEN_SECRET='.Length); $$env:ZTAS_BIND_ADDRESS = '127.0.0.1'; $$env:ZTAS_SECURE_COOKIES = 'true'; $$env:ZTAS_TRUST_LOOPBACK_PROXY = 'true'; Start-Process -FilePath '$(ZTAS_BIN)' -WorkingDirectory '.' -RedirectStandardOutput 'runtime/ztas.stdout.log' -RedirectStandardError 'runtime/ztas.stderr.log'; Start-Sleep -Milliseconds 500; try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://127.0.0.1:8020/health | Out-Null } catch { throw 'ZTAS khong khoi dong. Xem runtime/ztas.stderr.log' } }"
 	@$(MAKE) --no-print-directory https-proxy
@@ -92,8 +103,9 @@ INTERNAL_ZTAS_URL := http://127.0.0.1:8020
 CADDY_BIN ?= caddy
 HTTPS_HOST ?= ztas.ptit
 ZTAS_SERVER_IP ?=
+ZTAS_DNS_MODE ?=
 
-.PHONY: help configure build provision docker-ready opa-up opa-logs env https-proxy deploy-https run demo logs stop down clean
+.PHONY: help configure build provision docker-ready opa-up opa-logs env https-proxy deploy-https client-installers client-bundle run demo logs stop down clean
 
 help:
 	@echo "make build      Build ZTAS for macOS"
@@ -101,6 +113,7 @@ help:
 	@echo "make opa-up     Start OPA (Docker Desktop must already be running)"
 	@echo "make run        Build, provision, start OPA, ZTAS and local HTTPS proxy"
 	@echo "make deploy-https ZTAS_SERVER_IP=x.x.x.x: one-command macOS HTTPS bootstrap"
+	@echo "make client-installers ZTAS_SERVER_IP=x.x.x.x: create one-click client installer folder"
 	@echo "make logs       Follow today's audit log"
 	@echo "make stop       Stop the ZTAS process started by make"
 	@echo "make down       Stop ZTAS and OPA"
@@ -153,6 +166,11 @@ https-proxy:
 
 deploy-https:
 	@sh scripts/deploy-https-macos.sh "$(ZTAS_SERVER_IP)"
+
+client-installers:
+	@sh scripts/create-client-bundle-macos.sh "$(ZTAS_SERVER_IP)" "$(ZTAS_DNS_MODE)"
+
+client-bundle: client-installers
 
 run: provision opa-up env
 	@set -e; \

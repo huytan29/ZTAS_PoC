@@ -64,7 +64,9 @@ fi
 cp "$ca_file" runtime/ztas-local-ca.crt
 sudo security add-trusted-cert -d -r trustRoot \
   -k /Library/Keychains/System.keychain "$ca_file" >/dev/null 2>&1 || true
+sh scripts/create-client-bundle-macos.sh "$server_ip"
 
 echo "[DONE] Dashboard: https://$hostname:8443/dashboard"
 echo "[DONE] CA cho Ubuntu/Windows client: $project_root/runtime/ztas-local-ca.crt"
-echo "[NEXT] Tren client, them '$server_ip $hostname' vao hosts va cai CA mot lan."
+echo "[DONE] Tools cho may khach: $project_root/Client_PoC"
+echo '[NEXT] Chia se NGUYEN thu muc Client_PoC cho may khach moi.'

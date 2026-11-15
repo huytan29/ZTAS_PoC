@@ -15,6 +15,8 @@
 #include <ws2tcpip.h>
 #else
 #include <arpa/inet.h>
+#include <sys/socket.h>
+#include <unistd.h>
 #endif
 
 #include <httplib.h>
@@ -35,6 +37,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <unordered_map>
 #include <array>
 
@@ -165,6 +168,66 @@ bool env_flag(const char* name, bool fallback) {
     return normalized == "1" ||
         normalized == "true" ||
         normalized == "yes";
+}
+
+// Discovery is limited to the local broadcast domain. The client validates the
+// discovered address through HTTPS and the private CA before updating hosts.
+void run_locator_responder(unsigned short port) {
+#if defined(_WIN32)
+    WSADATA data{};
+    if (WSAStartup(MAKEWORD(2, 2), &data) != 0) return;
+    SOCKET socket_fd = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (socket_fd == INVALID_SOCKET) { WSACleanup(); return; }
+#else
+    int socket_fd = ::socket(AF_INET, SOCK_DGRAM, 0);
+    if (socket_fd < 0) return;
+#endif
+    int reuse = 1;
+    setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR,
+        reinterpret_cast<const char*>(&reuse), sizeof(reuse));
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_ANY);
+    address.sin_port = htons(port);
+    if (::bind(socket_fd, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) != 0) {
+#if defined(_WIN32)
+        closesocket(socket_fd); WSACleanup();
+#else
+        close(socket_fd);
+#endif
+        return;
+    }
+
+    constexpr std::string_view query = "ZTAS_LOCATOR_V1";
+    constexpr std::string_view reply = "ZTAS_LOCATOR_V1_OK";
+    for (;;) {
+        std::array<char, 64> payload{};
+        sockaddr_in peer{};
+#if defined(_WIN32)
+        int peer_size = sizeof(peer);
+#else
+        socklen_t peer_size = sizeof(peer);
+#endif
+        const auto received = recvfrom(socket_fd, payload.data(),
+            static_cast<int>(payload.size()), 0,
+            reinterpret_cast<sockaddr*>(&peer), &peer_size);
+        if (received != static_cast<int>(query.size()) ||
+            std::string_view(payload.data(), query.size()) != query) continue;
+        sendto(socket_fd, reply.data(), static_cast<int>(reply.size()), 0,
+            reinterpret_cast<const sockaddr*>(&peer), peer_size);
+    }
+}
+
+void start_locator_responder() {
+    if (!env_flag("ZTAS_LOCATOR_ENABLED", true)) return;
+    try {
+        const auto port = std::stoul(env_or_default("ZTAS_LOCATOR_PORT", "8021"));
+        if (port == 0 || port > 65535) return;
+        std::thread(run_locator_responder, static_cast<unsigned short>(port)).detach();
+        std::cout << "ZTAS Locator LAN dang lang nghe UDP " << port << ".\n";
+    } catch (const std::exception&) {
+        std::cerr << "Bo qua ZTAS Locator: ZTAS_LOCATOR_PORT khong hop le.\n";
+    }
 }
 
 bool valid_mac_address(const std::string& value) {
@@ -842,6 +905,7 @@ void handle_document_request(
 } // namespace
 
 int main() {
+    start_locator_responder();
     const std::string opa_host =
         env_or_default("OPA_HOST", "127.0.0.1");
 

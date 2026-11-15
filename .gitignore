@@ -24,3 +24,4 @@ data/documents/**
 !data/documents/restricted/
 !data/documents/restricted/.gitkeep
 runtime/
+Client_PoC/

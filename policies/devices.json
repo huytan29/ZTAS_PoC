@@ -43,24 +43,24 @@
       "registered": false,
       "trust_level": 3
     },
-    "web-1794541608661cc17e4a7eb1": {
-      "allowed_ip_addresses": [
-        "192.168.2.2"
-      ],
-      "device_name": "Linux x86_64 · ubuntu",
-      "device_type": "ubuntu",
-      "enrollment_profile": "trusted",
-      "lifecycle_status": "ACTIVE",
-      "location_id": "campus-network",
-      "registered": true,
-      "trust_level": 4
-    },
     "web-17945762606205e503221436": {
       "allowed_ip_addresses": [
         "192.168.2.10"
       ],
       "device_name": "MacIntel · macos",
       "device_type": "macos",
+      "enrollment_profile": "managed-vm",
+      "lifecycle_status": "ACTIVE",
+      "location_id": "lab-network",
+      "registered": true,
+      "trust_level": 3
+    },
+    "web-9f5c9af228454bb0bb381280": {
+      "allowed_ip_addresses": [
+        "192.168.2.2"
+      ],
+      "device_name": "Linux x86_64 · ubuntu",
+      "device_type": "ubuntu",
       "enrollment_profile": "managed-vm",
       "lifecycle_status": "ACTIVE",
       "location_id": "lab-network",

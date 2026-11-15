@@ -58,12 +58,14 @@ find_package(httplib CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(SQLite3 REQUIRED)
+find_package(Threads REQUIRED)
 
 target_link_libraries(ztas PRIVATE
     httplib::httplib
     nlohmann_json::nlohmann_json
     OpenSSL::Crypto
     SQLite3::SQLite3
+    Threads::Threads
 )
 
 target_link_libraries(secret_hash_tool PRIVATE

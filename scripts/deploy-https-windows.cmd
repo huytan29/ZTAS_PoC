@@ -57,6 +57,12 @@ if errorlevel 1 (
   exit /b 1
 )
 
+powershell -NoProfile -Command "if (-not (Get-NetFirewallRule -DisplayName 'ZTAS Locator UDP 8021' -ErrorAction SilentlyContinue)) { New-NetFirewallRule -DisplayName 'ZTAS Locator UDP 8021' -Direction Inbound -Action Allow -Protocol UDP -LocalPort 8021 -Profile Private | Out-Null }"
+if errorlevel 1 (
+  echo [ERROR] Khong the mo Firewall cho ZTAS Locator UDP 8021.
+  exit /b 1
+)
+
 cd /d "%ZTAS_PROJECT_ROOT%"
 call mingw32-make stop
 call mingw32-make run
@@ -72,7 +78,13 @@ exit /b 1
 
 :export_ca
 copy /Y "%ZTAS_CA%" "runtime\ztas-local-ca.crt" >nul
+call scripts\create-client-bundle-windows.cmd "%ZTAS_SERVER_IP%"
+if errorlevel 1 (
+  echo [ERROR] Server da khoi dong nhung khong the tao thu muc cai dat may khach.
+  exit /b 1
+)
 echo.
 echo [DONE] Dashboard: https://ztas.ptit:8443/dashboard
 echo [DONE] CA cho Ubuntu: %ZTAS_PROJECT_ROOT%\runtime\ztas-local-ca.crt
-echo [NEXT] Chep CA sang Ubuntu, them dong '%ZTAS_SERVER_IP% ztas.ptit' vao /etc/hosts, sau do cai CA bang update-ca-certificates.
+echo [DONE] Tools cho may khach: %ZTAS_PROJECT_ROOT%\Client_PoC
+echo [NEXT] Chia se NGUYEN thu muc Client_PoC cho may khach moi.

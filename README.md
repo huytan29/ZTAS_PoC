@@ -61,6 +61,20 @@ và sinh `runtime/ztas.env` nếu tệp chưa tồn tại.
 
 ## Windows
 
+### Triển khai server bằng một lệnh
+
+Sau khi đã cài MinGW-w64, CMake, Docker Desktop và vcpkg một lần, mở **CMD bằng
+Run as administrator** tại thư mục dự án rồi chạy duy nhất:
+
+```cmd
+mingw32-make deploy
+```
+
+Lệnh tự tìm MinGW tại `C:\msys64\mingw64\bin`, dùng vcpkg tại
+`%USERPROFILE%\vcpkg`, tự nhận IPv4 LAN, build ZTAS, chạy HTTPS/OPA/Locator,
+mở firewall và tạo tools máy khách. Nếu máy dùng vcpkg ở nơi khác, đặt
+`VCPKG_ROOT` một lần trước khi gọi lệnh.
+
 1. Cài **CMake**, **MinGW-w64 x64**, **Git**, **Docker Desktop**, vcpkg và
    **GNU Make**. Thư mục `bin` của MinGW-w64 phải nằm trong `PATH`; kiểm tra
    được cả `g++.exe` và `mingw32-make.exe` từ CMD.
@@ -148,6 +162,67 @@ mingw32-make run
 cùng máy. Client truy cập qua `https://ztas.ptit:8443/dashboard`, không qua
 cổng HTTP `8020`. Chứng chỉ `tls internal` cần được cài vào kho tin cậy của
 từng máy khách (Ubuntu/Windows) trước khi sử dụng.
+
+### Cấp phát máy khách HTTPS
+
+Sau khi server đã tạo `runtime/ztas-local-ca.crt`, admin chép tệp CA **và đúng
+một script theo hệ điều hành** đến máy khách qua kênh tin cậy (USB quản trị,
+thư mục VMware Shared Folder, MDM hoặc file share nội bộ đã xác thực). Ba
+script dưới đây cài CA, cập nhật ánh xạ `ztas.ptit` và kiểm tra HTTPS. Chúng
+cần quyền quản trị trên **máy khách**; người dùng cuối không cần chạy lại sau
+khi thiết bị đã được cấp phát.
+
+```cmd
+:: Windows client - CMD Run as administrator
+scripts\provision-client-windows.cmd 192.168.2.2 C:\Provisioning\ztas-local-ca.crt
+```
+
+```bash
+# Ubuntu client/VM
+sudo sh scripts/provision-client-ubuntu.sh 192.168.2.2 ~/Downloads/ztas-local-ca.crt
+
+# macOS client
+sudo sh scripts/provision-client-macos.sh 192.168.2.2 ~/Downloads/ztas-local-ca.crt
+```
+
+Nếu mạng đã có DNS nội bộ phân giải `ztas.ptit`, thêm `--use-dns` vào cuối
+lệnh để script không sửa file hosts. Các script in fingerprint SHA-256 của CA;
+admin phải đối chiếu fingerprint với tệp xuất trực tiếp từ server trước khi
+cài đặt. Chi tiết quy trình đa nền tảng nằm tại
+[docs/QUY_TRINH_HTTPS_DA_NEN_TANG.md](docs/QUY_TRINH_HTTPS_DA_NEN_TANG.md).
+
+Để người dùng cuối không phải nhập lệnh, admin tạo một **thư mục cài đặt** đã
+có sẵn CA và IP/DNS từ server:
+
+```cmd
+mingw32-make client-installers ZTAS_SERVER_IP=192.168.2.2
+```
+
+```bash
+make client-installers ZTAS_SERVER_IP=192.168.2.10
+```
+
+Nếu đã có DNS nội bộ, tạo bundle không sửa hosts bằng cách thêm
+`ZTAS_DNS_MODE=--use-dns` vào lệnh Make.
+
+Khi dùng `deploy-https`, bước tạo thư mục này diễn ra tự động ngay sau khi
+Caddy sinh CA; không cần chạy `client-installers` thủ công. `client-installers`
+chỉ hữu ích khi admin cần tạo lại tools sau đó.
+
+Thư mục build nội bộ được tạo tại `Client_PoC/`. Mục tiêu cấp
+phát cho end user là **một tệp duy nhất theo nền tảng**, không phải cả thư mục:
+
+| Máy khách | Tệp cấp cho người dùng | Thao tác của người dùng |
+| --- | --- | --- |
+| Windows | `CAI-ZTAS-Windows.cmd` | Double-click và chấp nhận UAC. |
+| macOS | `CAI-ZTAS-macOS.command` | Double-click và nhập mật khẩu macOS. |
+| Ubuntu/Linux | `CAI-ZTAS-Ubuntu.sh` | Mở/chạy tệp và nhập mật khẩu hệ thống. |
+
+Các `provision-client-*`, `ztas-client-config.*` và CA rời là helper nội bộ,
+không cấp trực tiếp cho end user. Installer cuối sẽ tự chứa CA, hostname,
+cấu hình Locator và logic cài đặt. Hệ điều hành vẫn phải yêu cầu UAC/mật khẩu
+administrator khi cài CA — đây là biện pháp bảo vệ bắt buộc, không thể và
+không nên bỏ qua bằng trình duyệt hay script.
 
 Trên Windows, có thể chạy bootstrap một lần bằng CMD quyền Administrator:
 
