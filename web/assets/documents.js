@@ -13,7 +13,7 @@ let mfaCodeResolver = null;
 let token = sessionStorage.getItem("ztas_document_token") || "";
 let context = JSON.parse(sessionStorage.getItem("ztas_document_context") || "null");
 let signedInAccount = context ? { username: context.username } : null;
-let adminStorageLoaded = false;
+let storageLoaded = false;
 
 const labels = {
   public: "Công khai", internal: "Nội bộ", confidential: "Mật / nhạy cảm",
@@ -25,7 +25,8 @@ const roleDocumentLevel = {
   employee: 2,
   manager: 3,
   engineer: 4,
-  admin: 5
+  business_admin: 5,
+  admin: 2
 };
 
 function escapeHtml(value) {
@@ -57,8 +58,8 @@ function updateVisibleDocumentLevels() {
   );
 }
 
-function isAdminSession() {
-  return (context?.role || signedInAccount?.role) === "admin";
+function canUploadDocuments() {
+  return Boolean(token && context && (roleDocumentLevel[context.role] || 0) > 0);
 }
 
 function renderAdminDataZones(zones) {
@@ -70,33 +71,47 @@ function renderAdminDataZones(zones) {
   container.innerHTML = `<table class="document-zone-table"><thead><tr><th>Phân vùng</th><th>Độ nhạy cảm</th><th>Tệp đã nạp</th><th>Thư mục lưu</th><th>Mô tả</th></tr></thead><tbody>${zones.map(zone => `<tr><td><strong>${escapeHtml(zone.name)}</strong><span class="document-zone-id">${escapeHtml(zone.id)}</span></td><td><span class="document-sensitivity">${escapeHtml(zone.sensitivity)}</span></td><td>${escapeHtml(zone.document_count)}</td><td class="document-zone-path">${escapeHtml(zone.storage_path)}</td><td class="document-zone-description">${escapeHtml(zone.description)}</td></tr>`).join("")}</tbody></table>`;
 }
 
-async function refreshAdminStorage() {
+function filterUploadZones() {
+  const select = document.querySelector("#document-upload-form select[name=zone_id]");
+  const maximumLevel = roleDocumentLevel[context?.role] || 0;
+  [...select.options].forEach(option => {
+    const level = { public: 1, internal: 2, confidential: 3, secret: 4, restricted: 5 }[option.value] || 99;
+    option.hidden = level > maximumLevel;
+    option.disabled = level > maximumLevel;
+  });
+  if (select.selectedOptions[0]?.disabled) {
+    select.value = [...select.options].find(option => !option.disabled)?.value || "";
+  }
+}
+
+async function refreshStorage() {
   const panel = document.querySelector("#document-admin-storage");
-  if (!isAdminSession()) {
+  if (!canUploadDocuments()) {
     panel.hidden = true;
     return;
   }
   panel.hidden = false;
   const container = document.querySelector("#document-zone-list");
   try {
-    const response = await fetch("/api/data-zones", { cache: "no-store" });
+    const response = await fetch("/api/data-zones", { cache: "no-store", headers: requestHeaders() });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "Không thể tải phân vùng dữ liệu");
     renderAdminDataZones(data.zones ?? []);
-    adminStorageLoaded = true;
+    storageLoaded = true;
   } catch (error) {
     container.innerHTML = `<p>Không thể tải phân vùng: ${escapeHtml(error.message)}</p>`;
   }
 }
 
-function updateAdminStorageVisibility() {
+function updateStorageVisibility() {
   const panel = document.querySelector("#document-admin-storage");
-  if (!isAdminSession()) {
+  if (!canUploadDocuments()) {
     panel.hidden = true;
     return;
   }
   panel.hidden = false;
-  if (!adminStorageLoaded) refreshAdminStorage();
+  filterUploadZones();
+  if (!storageLoaded) refreshStorage();
 }
 
 function openReaderDialog(title, content) {
@@ -119,7 +134,7 @@ function updateSession() {
     accountNote.innerHTML = "<strong>Phiên đăng nhập không còn hiệu lực</strong><span>Vui lòng đăng nhập lại tại màn hình hệ thống.</span>";
   }
   updateVisibleDocumentLevels();
-  updateAdminStorageVisibility();
+  updateStorageVisibility();
 }
 
 function applyReaderIdentity(data) {
@@ -331,9 +346,10 @@ document.querySelectorAll("[data-zone]").forEach(button => button.addEventListen
 document.querySelector("#document-reader-close").addEventListener("click", () => readerDialog.close());
 
 document.querySelector("#document-upload-button").addEventListener("click", () => {
-  if (!isAdminSession()) return;
+  if (!canUploadDocuments()) return;
   const form = document.querySelector("#document-upload-form");
   form.reset();
+  filterUploadZones();
   document.querySelector("#document-upload-message").textContent = "";
   document.querySelector("#document-upload-dialog").showModal();
 });
@@ -345,10 +361,8 @@ function closeUploadDialog() {
 document.querySelector("#document-upload-close").addEventListener("click", closeUploadDialog);
 document.querySelector("#document-upload-cancel").addEventListener("click", closeUploadDialog);
 
-document.querySelector("#document-upload-form").addEventListener("submit", async event => {
-  event.preventDefault();
-  if (!isAdminSession()) return;
-  const form = event.currentTarget;
+async function uploadDocument(form) {
+  if (!canUploadDocuments()) return;
   const message = document.querySelector("#document-upload-message");
   const file = form.elements.document.files[0];
   if (!file) return;
@@ -360,16 +374,26 @@ document.querySelector("#document-upload-form").addEventListener("submit", async
   try {
     const response = await fetch("/api/data-zones/upload", {
       method: "POST",
+      headers: requestHeaders(),
       body: new FormData(form)
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "Tải tài liệu thất bại");
-    adminStorageLoaded = false;
+    if (!response.ok && data.effect === "STEP_UP") {
+      await stepUp(data);
+      return uploadDocument(form);
+    }
+    if (!response.ok) throw new Error(data.reason_code || data.error || "Tải tài liệu thất bại");
+    storageLoaded = false;
     closeUploadDialog();
-    await refreshAdminStorage();
+    await refreshStorage();
   } catch (error) {
     message.textContent = error.message;
   }
+}
+
+document.querySelector("#document-upload-form").addEventListener("submit", event => {
+  event.preventDefault();
+  uploadDocument(event.currentTarget);
 });
 
 document.querySelector("#logout-button").addEventListener("click", async () => {

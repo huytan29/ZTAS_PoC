@@ -18,6 +18,10 @@
     },
     "admin": {
       "level": 5,
+      "document_levels": [1, 2]
+    },
+    "business_admin": {
+      "level": 5,
       "document_levels": [1, 2, 3, 4, 5]
     }
   }

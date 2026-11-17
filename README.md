@@ -122,9 +122,26 @@ Không cần thay đổi PowerShell Execution Policy vì dự án không chạy 
 | `make build` | Chỉ cấu hình và build C++ cho đúng nền tảng hiện tại. |
 | `make provision` | Build, rồi cấp Device Key cho thiết bị đã đăng ký. |
 | `make opa-up` | Khởi động OPA; Docker Desktop phải được mở sẵn. |
+| `make scenario-test` | Chạy tự động 5 kịch bản kiểm thử của đề cương với OPA và lưu báo cáo JSON. |
 | `make run` | Chủ động chạy toàn bộ chuỗi provision + OPA + ZTAS. |
 | `make logs` | Theo dõi audit log hôm nay. |
 | `make stop` / `make down` | Dừng ZTAS / dừng cả ZTAS lẫn OPA. |
+
+### Kiểm thử tự động 5 kịch bản đề cương
+
+Sau khi Docker Desktop sẵn sàng, chạy một lệnh tại thư mục source:
+
+```cmd
+mingw32-make scenario-test
+```
+
+Trên macOS dùng `make scenario-test`. Lệnh build công cụ
+`ztas_scenario_test`, khởi động OPA và kiểm tra năm trường hợp: đúng đơn vị/
+nhiệm vụ, sai đơn vị, thiết bị chưa Trusted, quản lý sau Step-Up và quản trị
+kỹ thuật không được suy diễn quyền đọc tài liệu cấp cao. Kết quả hiện rõ
+`[PASS]`/`[FAIL]` trong terminal và được lưu tại
+`runtime/test-reports/scenario-report.json`. Công cụ chỉ đọc policy OPA; không
+tạo tài khoản, không đổi thiết bị và không ghi đè dữ liệu vận hành.
 
 ## Vận hành và dữ liệu nhạy cảm
 

@@ -29,6 +29,11 @@ add_executable(provision_devices
     tools/provision_devices.cpp
 )
 
+add_executable(ztas_scenario_test
+    tools/ztas_scenario_test.cpp
+    src/policy/policy_client.cpp
+)
+
 target_include_directories(ztas PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
@@ -77,6 +82,15 @@ target_link_libraries(provision_devices PRIVATE
     OpenSSL::Crypto
 )
 
+target_include_directories(ztas_scenario_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(ztas_scenario_test PRIVATE
+    httplib::httplib
+    nlohmann_json::nlohmann_json
+)
+
 # cpp-httplib uses Winsock when ZTAS is built natively on Windows.  The
 # dependency is implicit on Unix-like platforms, but must be linked explicitly
 # by applications using the header-only HTTP implementation on Windows.
@@ -87,5 +101,10 @@ if(WIN32)
         _WIN32_WINNT=0x0A00
         WINVER=0x0A00
     )
+    target_compile_definitions(ztas_scenario_test PRIVATE
+        _WIN32_WINNT=0x0A00
+        WINVER=0x0A00
+    )
     target_link_libraries(ztas PRIVATE ws2_32)
+    target_link_libraries(ztas_scenario_test PRIVATE ws2_32)
 endif()

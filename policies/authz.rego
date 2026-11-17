@@ -87,6 +87,32 @@ role_sufficient if {
     data.roles[input.subject.role].document_levels[_] == resource_level
 }
 
+# Pham vi nghiep vu la mot thuoc tinh doc lap voi role. Tai lieu "A"
+# chi duoc doc boi chu the thuoc don vi A (tru tai nguyen shared).
+organization_sufficient if {
+    data.resources[input.resource.id].organization_unit == "shared"
+}
+
+organization_sufficient if {
+    input.subject.organization_unit ==
+        data.resources[input.resource.id].organization_unit
+}
+
+# Nhiem vu duoc giao quyet dinh pham vi tai nguyen. "*" chi dung cho
+# business_admin duoc uy quyen, khong ap dung cho system admin ky thuat.
+task_sufficient if {
+    data.resources[input.resource.id].required_task == "public"
+}
+
+task_sufficient if {
+    input.subject.assigned_tasks[_] == "*"
+}
+
+task_sufficient if {
+    input.subject.assigned_tasks[_] ==
+        data.resources[input.resource.id].required_task
+}
+
 device_sufficient if {
     data.devices[input.device.id].trust_level >=
         data.resources[input.resource.id].min_device_trust
@@ -100,22 +126,6 @@ location_sufficient if {
 auth_sufficient if {
     input.subject.auth_level >=
         data.resources[input.resource.id].min_auth_level
-}
-
-# Admin van phai dang nhap tu thiet bi da dang ky, dung IP duoc cap va nam
-# trong pham vi tai khoan. Admin co quyen role toan bo phan vung, nhung van
-# phai Step-Up tu cap tai lieu 3 theo yeu cau xac thuc bo sung.
-admin_full_access if {
-    input.subject.role == "admin"
-    valid_context
-    device_registered
-    not device_blocked
-    device_key_verified
-    device_ip_verified
-    account_active
-    account_device_bound
-    location_matches_device
-    auth_sufficient
 }
 
 output(effect, rule_id, reason, severity, required_auth) := {
@@ -285,6 +295,43 @@ decision := output(
 
 decision := output(
     "DENY",
+    "ZTAS-2007",
+    "ORGANIZATION_UNIT_NOT_ALLOWED",
+    "high",
+    data.resources[input.resource.id].min_auth_level
+) if {
+    valid_context
+    device_registered
+    device_key_verified
+    device_ip_verified
+    account_active
+    account_device_bound
+    location_matches_device
+    role_sufficient
+    not organization_sufficient
+}
+
+decision := output(
+    "DENY",
+    "ZTAS-2008",
+    "TASK_SCOPE_NOT_ASSIGNED",
+    "high",
+    data.resources[input.resource.id].min_auth_level
+) if {
+    valid_context
+    device_registered
+    device_key_verified
+    device_ip_verified
+    account_active
+    account_device_bound
+    location_matches_device
+    role_sufficient
+    organization_sufficient
+    not task_sufficient
+}
+
+decision := output(
+    "DENY",
     "ZTAS-1003",
     "DEVICE_TRUST_INSUFFICIENT",
     "high",
@@ -298,8 +345,9 @@ decision := output(
     account_device_bound
     location_matches_device
     role_sufficient
+    organization_sufficient
+    task_sufficient
     not device_sufficient
-    not admin_full_access
 }
 
 decision := output(
@@ -317,9 +365,10 @@ decision := output(
     account_device_bound
     location_matches_device
     role_sufficient
+    organization_sufficient
+    task_sufficient
     device_sufficient
     not location_sufficient
-    not admin_full_access
 }
 
 decision := output(
@@ -337,20 +386,11 @@ decision := output(
     account_device_bound
     location_matches_device
     role_sufficient
+    organization_sufficient
+    task_sufficient
     device_sufficient
     location_sufficient
     not auth_sufficient
-    not admin_full_access
-}
-
-decision := output(
-    "PERMIT",
-    "ZTAS-4002",
-    "ADMIN_GLOBAL_DOCUMENT_READ",
-    "info",
-    1
-) if {
-    admin_full_access
 }
 
 decision := output(
@@ -368,8 +408,9 @@ decision := output(
     account_device_bound
     location_matches_device
     role_sufficient
+    organization_sufficient
+    task_sufficient
     device_sufficient
     location_sufficient
     auth_sufficient
-    not admin_full_access
 }

@@ -10,17 +10,19 @@ EXE := .exe
 BUILD_DIR := build\$(PLATFORM)
 ZTAS_BIN := $(BUILD_DIR)\ztas$(EXE)
 PROVISION_BIN := $(BUILD_DIR)\provision_devices$(EXE)
+SCENARIO_TEST_BIN := $(BUILD_DIR)\ztas_scenario_test$(EXE)
 CADDY_BIN ?= C:\Tools\Caddy\caddy.exe
 HTTPS_HOST ?= ztas.ptit
 ZTAS_SERVER_IP ?=
 ZTAS_DNS_MODE ?=
 VCPKG_DIR := $(CURDIR)\.vcpkg
 
-.PHONY: help bootstrap-vcpkg configure build provision docker-ready opa-up opa-logs env https-proxy deploy deploy-https client-installers client-bundle run demo logs stop down clean
+.PHONY: help bootstrap-vcpkg configure build provision scenario-test docker-ready opa-up opa-logs env https-proxy deploy deploy-https client-installers client-bundle run demo logs stop down clean
 
 help:
 	@echo make build      Bootstrap vcpkg, download C++ libraries and build ZTAS
 	@echo make provision Build and issue keys for registered devices
+	@echo make scenario-test Run the five thesis scenarios against OPA and save JSON report
 	@echo make opa-up     Start OPA (Docker Desktop must already be running)
 	@echo make run        Build, provision, start OPA, ZTAS and local HTTPS proxy
 	@echo make deploy-https Run HTTPS bootstrap; use ZTAS_SERVER_IP=x.x.x.x when needed
@@ -35,13 +37,16 @@ bootstrap-vcpkg:
 
 configure: bootstrap-vcpkg
 	@powershell -NoProfile -Command "$$state = '$(BUILD_DIR)\CMakeFiles'; $$system = Get-ChildItem -Path $$state -Filter CMakeSystem.cmake -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1; $$expected = '$(VCPKG_DIR)'.Replace('\','/'); if ($$system -and ((Get-Content $$system.FullName -Raw) -notlike ('*' + $$expected + '*'))) { Write-Output '[INFO] Xoa CMake cache cu dang tro toi vcpkg khac.'; Remove-Item -LiteralPath '$(BUILD_DIR)' -Recurse -Force }"
-	@set "VCPKG_ROOT=$(VCPKG_DIR)" && set "VCPKG_DEFAULT_TRIPLET=x64-mingw-static" && set "VCPKG_DEFAULT_HOST_TRIPLET=x64-mingw-static" && cmake --preset $(PLATFORM) -DCMAKE_TOOLCHAIN_FILE="$(VCPKG_DIR)\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-mingw-static -DCMAKE_MAKE_PROGRAM=mingw32-make -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+	@call scripts\configure-windows-build.cmd "$(VCPKG_DIR)"
 
 build: configure
 	@cmake --build --preset $(PLATFORM) --parallel
 
 provision: build
 	@"$(PROVISION_BIN)" policies\devices.json data\device_credentials.json runtime\devices
+
+scenario-test: build opa-up
+	@"$(SCENARIO_TEST_BIN)" 127.0.0.1 "runtime\test-reports\scenario-report.json"
 
 docker-ready:
 	@docker info >nul 2>&1 || (echo Docker Engine chua san sang. Hay mo Docker Desktop roi chay lai. & exit /b 1)
@@ -103,6 +108,7 @@ EXE :=
 BUILD_DIR := build/$(PLATFORM)
 ZTAS_BIN := $(BUILD_DIR)/ztas$(EXE)
 PROVISION_BIN := $(BUILD_DIR)/provision_devices$(EXE)
+SCENARIO_TEST_BIN := $(BUILD_DIR)/ztas_scenario_test$(EXE)
 POC_URL := http://localhost:8020
 INTERNAL_ZTAS_URL := http://127.0.0.1:8020
 CADDY_BIN ?= caddy
@@ -112,11 +118,12 @@ ZTAS_DNS_MODE ?=
 VCPKG_DIR := $(CURDIR)/.vcpkg
 VCPKG_TARGET_TRIPLET ?= arm64-osx
 
-.PHONY: help bootstrap-vcpkg configure build provision docker-ready opa-up opa-logs env https-proxy deploy-https client-installers client-bundle client-pkg run demo logs stop down clean
+.PHONY: help bootstrap-vcpkg configure build provision scenario-test docker-ready opa-up opa-logs env https-proxy deploy-https client-installers client-bundle client-pkg run demo logs stop down clean
 
 help:
 	@echo "make build      Bootstrap vcpkg, download C++ libraries and build ZTAS"
 	@echo "make provision Build and issue keys for registered devices"
+	@echo "make scenario-test Run the five thesis scenarios against OPA and save JSON report"
 	@echo "make opa-up     Start OPA (Docker Desktop must already be running)"
 	@echo "make run        Build, provision, start OPA, ZTAS and local HTTPS proxy"
 	@echo "make deploy-https ZTAS_SERVER_IP=x.x.x.x: one-command macOS HTTPS bootstrap"
@@ -141,6 +148,9 @@ build: configure
 
 provision: build
 	@$(PROVISION_BIN) policies/devices.json data/device_credentials.json runtime/devices
+
+scenario-test: build opa-up
+	@$(SCENARIO_TEST_BIN) 127.0.0.1 "runtime/test-reports/scenario-report.json"
 
 docker-ready:
 	@docker info >/dev/null 2>&1 || { echo "Docker Engine chua san sang. Hay mo Docker Desktop roi chay lai."; exit 1; }

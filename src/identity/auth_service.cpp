@@ -15,6 +15,7 @@
 #include <mutex>
 #include <sstream>
 #include <stdexcept>
+#include <string_view>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -211,10 +212,60 @@ bool valid_username(const std::string& username) {
 
 bool valid_role(const std::string& role) {
     static const std::vector<std::string> allowed_roles = {
-        "admin", "employee", "manager", "engineer", "guest"
+        "admin", "business_admin", "employee", "manager", "engineer", "guest"
     };
     return std::find(allowed_roles.begin(), allowed_roles.end(), role) !=
         allowed_roles.end();
+}
+
+bool valid_attribute_id(const std::string& value) {
+    if (value.empty() || value.size() > 48) return false;
+    for (const char character : value) {
+        if (!std::islower(static_cast<unsigned char>(character)) &&
+            !std::isdigit(static_cast<unsigned char>(character)) &&
+            character != '-') return false;
+    }
+    return value.front() != '-' && value.back() != '-';
+}
+
+std::string unit_suffix(const std::string& organization_unit) {
+    constexpr std::string_view prefix = "unit-";
+    if (organization_unit.rfind(prefix, 0) == 0 &&
+        organization_unit.size() > prefix.size()) {
+        return organization_unit.substr(prefix.size());
+    }
+    return organization_unit;
+}
+
+std::vector<std::string> default_tasks_for_role(
+    const std::string& role,
+    const std::string& organization_unit
+) {
+    // Quan tri ky thuat co the xem tai lieu Cong khai va Noi bo de van hanh,
+    // nhung khong tu suy ra quyen doc tai lieu nghiep vu tu cap 3 tro len.
+    if (role == "admin") {
+        return {"public", "internal-" + unit_suffix(organization_unit)};
+    }
+    if (role == "business_admin") return {"*"};
+    const std::string suffix = unit_suffix(organization_unit);
+    std::vector<std::string> tasks{"public"};
+    if (role == "employee" || role == "manager" || role == "engineer") {
+        tasks.push_back("internal-" + suffix);
+    }
+    if (role == "manager" || role == "engineer") {
+        tasks.push_back("sensitive-" + suffix);
+    }
+    if (role == "engineer") tasks.push_back("secret-" + suffix);
+    return tasks;
+}
+
+std::vector<std::string> effective_tasks_for_user(const json& user) {
+    if (user.contains("assigned_tasks") && user.at("assigned_tasks").is_array()) {
+        return user.at("assigned_tasks").get<std::vector<std::string>>();
+    }
+    return default_tasks_for_role(
+        user.value("role", "guest"), user.value("organization_unit", "unit-a")
+    );
 }
 
 void write_users_data(const std::string& users_file, const json& users_data) {
@@ -406,7 +457,12 @@ std::optional<AccessSubject> AuthService::authenticate(
                         "allowed_device_ids",
                         std::vector<std::string>{}
                     ),
-                    effective_expires_at
+                    effective_expires_at,
+                    "",
+                    "",
+                    "",
+                    user.value("organization_unit", "unit-a"),
+                    effective_tasks_for_user(user)
                 };
             }
         }
@@ -459,7 +515,12 @@ std::optional<AccessSubject> AuthService::authenticate_device_enrollment(
                 user.value("role", ""),
                 1,
                 user.value("allowed_device_ids", std::vector<std::string>{}),
-                effective_expires_at
+                effective_expires_at,
+                "",
+                "",
+                "",
+                user.value("organization_unit", "unit-a"),
+                effective_tasks_for_user(user)
             };
         }
     } catch (const std::exception&) {
@@ -578,7 +639,9 @@ PasswordSetupResult AuthService::set_initial_admin_password(
 
 UserProvisioningResult AuthService::create_user(
     const std::string& username,
-    const std::string& role
+    const std::string& role,
+    const std::string& organization_unit,
+    const std::vector<std::string>& assigned_tasks
 ) const {
     if (!valid_username(username)) {
         return {
@@ -598,6 +661,26 @@ UserProvisioningResult AuthService::create_user(
             "",
             ""
         };
+    }
+    if (!valid_attribute_id(organization_unit)) {
+        return {
+            false,
+            "INVALID_ORGANIZATION_UNIT",
+            "Don vi chi gom chu thuong, so va dau gach ngang",
+            "",
+            ""
+        };
+    }
+    for (const auto& task : assigned_tasks) {
+        if (task != "*" && !valid_attribute_id(task)) {
+            return {
+                false,
+                "INVALID_ASSIGNED_TASK",
+                "Nhiem vu chi gom chu thuong, so va dau gach ngang",
+                "",
+                ""
+            };
+        }
     }
 
     std::lock_guard<std::mutex> lock(mutex_);
@@ -623,9 +706,14 @@ UserProvisioningResult AuthService::create_user(
         }
 
         const std::string account_key = generate_account_key();
+        const std::vector<std::string> effective_tasks = assigned_tasks.empty()
+            ? default_tasks_for_role(role, organization_unit)
+            : assigned_tasks;
         json user = {
             {"username", username},
             {"role", role},
+            {"organization_unit", organization_unit},
+            {"assigned_tasks", effective_tasks},
             {"password_hash", create_password_hash("ptit@123")},
             {"account_key_hash", create_password_hash(account_key)},
             {"account_key_issued_at", current_epoch()},
@@ -886,6 +974,8 @@ std::string AuthService::issue_token(
         {"role", subject.role},
         {"auth_level", subject.auth_level},
         {"allowed_device_ids", subject.allowed_device_ids},
+        {"organization_unit", subject.organization_unit},
+        {"assigned_tasks", subject.assigned_tasks},
         {"account_expires_at", subject.account_expires_at},
         {"iat", now},
         {"exp", token_expiry}
@@ -1008,7 +1098,9 @@ std::optional<AccessSubject> AuthService::verify_token(
                 account_expires_at,
                 payload.value("reader_device_id", ""),
                 payload.value("reader_location_id", ""),
-                payload.value("mfa_challenge_id", "")
+                payload.value("mfa_challenge_id", ""),
+                user.value("organization_unit", "unit-a"),
+                effective_tasks_for_user(user)
             };
         }
 

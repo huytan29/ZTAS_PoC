@@ -48,7 +48,9 @@ std::optional<AccessDecision> PolicyClient::decide(
                 {"role", request.subject.role},
                 {"auth_level", request.subject.auth_level},
                 {"allowed_device_ids", request.subject.allowed_device_ids},
-                {"account_expires_at", request.subject.account_expires_at}
+                {"account_expires_at", request.subject.account_expires_at},
+                {"organization_unit", request.subject.organization_unit},
+                {"assigned_tasks", request.subject.assigned_tasks}
             }},
             {"device", {
                 {"id", request.device_id},
@@ -62,7 +64,9 @@ std::optional<AccessDecision> PolicyClient::decide(
             {"resource", {
                 {"id", request.resource.id},
                 {"sensitivity", request.resource.sensitivity},
-                {"level", request.resource.level}
+                {"level", request.resource.level},
+                {"organization_unit", request.resource.organization_unit},
+                {"required_task", request.resource.required_task}
             }},
             {"action", request.action}
         }}

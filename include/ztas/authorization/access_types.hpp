@@ -25,6 +25,10 @@ struct AccessSubject{
     std::string reader_location_id;
     // Gan vao token sau Step-Up de Server co the thu hoi ngay quyen MFA.
     std::string mfa_challenge_id;
+    // Thuoc tinh nghiep vu cho PBAC: don vi va cac nhiem vu/pham vi tai
+    // nguyen duoc giao. Day khong phai la quyen ky thuat cua system admin.
+    std::string organization_unit;
+    std::vector<std::string> assigned_tasks;
 };
 
 // Tài nguyên được bảo vệ trong hệ thống
@@ -33,6 +37,8 @@ struct ProtectedResource{
     std::string sensitivity;
     int level = 1;
     std::string content;
+    std::string organization_unit;
+    std::string required_task;
 };
 
 //Dữ liệu mà chương trình sẽ gửit đến OPA để xin quyết định truy cập

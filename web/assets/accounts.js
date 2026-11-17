@@ -13,7 +13,7 @@ function escapeHtml(value) {
 }
 
 function roleLabel(role) {
-  return ({ admin: "Quản trị viên", employee: "Nhân viên", manager: "Quản lý", engineer: "Kỹ sư", guest: "Khách" })[role] ?? role;
+  return ({ admin: "Quản trị kỹ thuật", business_admin: "Lãnh đạo được ủy quyền", employee: "Chuyên viên", manager: "Quản lý", engineer: "Kỹ sư", guest: "Khách" })[role] ?? role;
 }
 
 function rolePermission(role) {
@@ -22,13 +22,14 @@ function rolePermission(role) {
     employee: "Quyền hệ thống: đọc tài liệu cấp 1–2 khi thiết bị đáp ứng policy.",
     manager: "Quyền hệ thống: đọc tài liệu cấp 1–3 khi thiết bị đáp ứng policy.",
     engineer: "Quyền hệ thống: đọc tài liệu cấp 1–4 khi thiết bị, vị trí và MFA đáp ứng policy.",
-    admin: "Quyền hệ thống: đọc toàn bộ tài liệu cấp 1–5 sau khi tài khoản và thiết bị được cấp phát hợp lệ."
+    admin: "Quyền kỹ thuật: quản lý hệ thống và đọc Cấp 1–2; không tự có quyền đọc tài liệu nghiệp vụ Cấp 3–5.",
+    business_admin: "Quyền nghiệp vụ được ủy quyền: đọc cấp 1–5 trong phạm vi đơn vị/nhiệm vụ và khi thiết bị đáp ứng policy."
   };
   return permissions[role] ?? "Quyền được xác định bởi policy hệ thống.";
 }
 
 function rolePermissionShort(role) {
-  return ({ guest: "Cấp 1", employee: "Cấp 1–2", manager: "Cấp 1–3", engineer: "Cấp 1–4", admin: "Cấp 1–5" })[role] ?? "Theo policy";
+  return ({ guest: "Cấp 1", employee: "Cấp 1–2", manager: "Cấp 1–3", engineer: "Cấp 1–4", business_admin: "Cấp 1–5 theo phạm vi", admin: "Cấp 1–2 kỹ thuật" })[role] ?? "Theo policy";
 }
 
 function apiHeaders(json = false) {
@@ -60,7 +61,8 @@ function renderUsers(users) {
     const session = user.temporary_session_minutes > 0 ? `Tạm thời ${user.temporary_session_minutes} phút` : "Không giới hạn theo thời gian";
     const isCurrent = user.username === currentUser;
     const hasGlobalScope = devices.includes("*");
-    return `<tr><td><strong>${escapeHtml(user.username)}</strong></td><td><span class="role-badge role-badge--${escapeHtml(user.role)}">${escapeHtml(roleLabel(user.role))}</span></td><td class="account-table__permission">${escapeHtml(rolePermissionShort(user.role))}</td><td class="account-table__devices">${escapeHtml(devicesText)}</td><td>${escapeHtml(session)}</td><td class="account-table__actions"><div class="account-action-group">${hasGlobalScope ? '<span class="account-self">Phạm vi toàn hệ thống</span>' : `<button class="button button--secondary button--small" data-assign-user="${escapeHtml(user.username)}">Gán thiết bị</button>`}<button class="button button--secondary button--small" data-issue-account-key="${escapeHtml(user.username)}">Cấp lại key</button>${isCurrent ? '<span class="account-self">Phiên hiện tại</span>' : `<button class="button button--danger-outline button--small" data-delete-user="${escapeHtml(user.username)}">Xóa</button>`}</div></td></tr>`;
+    const scope = `${user.organization_unit || "unit-a"} · ${(user.assigned_tasks ?? []).join(", ") || "không có nhiệm vụ đọc"}`;
+    return `<tr><td><strong>${escapeHtml(user.username)}</strong><small class="account-scope">${escapeHtml(scope)}</small></td><td><span class="role-badge role-badge--${escapeHtml(user.role)}">${escapeHtml(roleLabel(user.role))}</span></td><td class="account-table__permission">${escapeHtml(rolePermissionShort(user.role))}</td><td class="account-table__devices">${escapeHtml(devicesText)}</td><td>${escapeHtml(session)}</td><td class="account-table__actions"><div class="account-action-group">${hasGlobalScope ? '<span class="account-self">Phạm vi toàn hệ thống</span>' : `<button class="button button--secondary button--small" data-assign-user="${escapeHtml(user.username)}">Gán thiết bị</button>`}<button class="button button--secondary button--small" data-issue-account-key="${escapeHtml(user.username)}">Cấp lại key</button>${isCurrent ? '<span class="account-self">Phiên hiện tại</span>' : `<button class="button button--danger-outline button--small" data-delete-user="${escapeHtml(user.username)}">Xóa</button>`}</div></td></tr>`;
   }).join("")}</tbody></table>`;
 
   container.querySelectorAll("[data-delete-user]").forEach(button => button.addEventListener("click", () => openDeleteDialog(button.dataset.deleteUser)));
@@ -173,7 +175,8 @@ document.querySelector("#create-user-form").addEventListener("submit", async eve
   const message = document.querySelector("#create-user-message");
   message.textContent = "Đang tạo tài khoản…";
   try {
-    const response = await fetch("/api/users", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ username: form.elements.username.value.trim(), role: form.elements.role.value }) });
+    const tasks = form.elements.assigned_tasks.value.split(",").map(value => value.trim()).filter(Boolean);
+    const response = await fetch("/api/users", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ username: form.elements.username.value.trim(), role: form.elements.role.value, organization_unit: form.elements.organization_unit.value, assigned_tasks: tasks }) });
     const data = await parseResponse(response);
     closeDialog("create-user-dialog");
     await refreshUsers();

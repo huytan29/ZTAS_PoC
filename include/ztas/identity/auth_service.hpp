@@ -5,6 +5,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <vector>
 
 struct PasswordSetupResult {
     bool success = false;
@@ -96,7 +97,9 @@ public:
     // PoC moi la ptit@123 va chi hash PBKDF2 duoc luu trong users.json.
     UserProvisioningResult create_user(
         const std::string& username,
-        const std::string& role
+        const std::string& role,
+        const std::string& organization_unit = "unit-a",
+        const std::vector<std::string>& assigned_tasks = {}
     ) const;
 
     // Cap lai Account Key cho tai khoan co san va vo hieu hoa key cu ngay lap tuc.

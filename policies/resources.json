@@ -2,6 +2,8 @@
   "resources": {
     "public_document": {
       "level": 1,
+      "organization_unit": "shared",
+      "required_task": "public",
       "min_role_level": 1,
       "min_device_trust": 1,
       "min_location_level": 1,
@@ -9,6 +11,8 @@
     },
     "internal_document": {
       "level": 2,
+      "organization_unit": "unit-a",
+      "required_task": "internal-a",
       "min_role_level": 2,
       "min_device_trust": 2,
       "min_location_level": 2,
@@ -16,6 +20,8 @@
     },
     "confidential_document": {
       "level": 3,
+      "organization_unit": "unit-a",
+      "required_task": "sensitive-a",
       "min_role_level": 3,
       "min_device_trust": 3,
       "min_location_level": 2,
@@ -23,6 +29,8 @@
     },
     "secret_document": {
       "level": 4,
+      "organization_unit": "unit-a",
+      "required_task": "secret-a",
       "min_role_level": 4,
       "min_device_trust": 4,
       "min_location_level": 3,
@@ -30,6 +38,8 @@
     },
     "restricted_document": {
       "level": 5,
+      "organization_unit": "unit-a",
+      "required_task": "restricted-a",
       "min_role_level": 5,
       "min_device_trust": 5,
       "min_location_level": 4,

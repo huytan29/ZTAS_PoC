@@ -59,7 +59,7 @@
 
         <section class="panel document-admin-storage" id="document-admin-storage" hidden>
           <header class="document-admin-storage__header">
-            <div><h2>Khu dữ liệu được bảo vệ</h2><p>Quản lý các phân vùng và nạp tệp trực tiếp vào đúng mức bảo vệ.</p></div>
+            <div><h2>Khu dữ liệu được bảo vệ</h2><p>Nạp tệp vào phân vùng mà tài khoản, thiết bị và policy hiện tại cho phép.</p></div>
             <button class="button button--primary" id="document-upload-button" type="button">Tải tài liệu lên</button>
           </header>
           <div class="document-zone-table-wrap" id="document-zone-list"><p>Đang tải phân vùng dữ liệu…</p></div>
@@ -89,7 +89,7 @@
 
   <dialog class="document-upload-dialog" id="document-upload-dialog">
     <form class="document-upload-dialog__card" id="document-upload-form" enctype="multipart/form-data">
-      <header class="document-upload-dialog__header"><div><p class="page-kicker">Quản trị dữ liệu</p><h2>Tải tài liệu vào phân vùng</h2><p>Chỉ Admin được nạp tệp. Policy của phân vùng quyết định ai được đọc tệp.</p></div><button class="document-reader-dialog__close" id="document-upload-close" type="button" aria-label="Đóng">×</button></header>
+      <header class="document-upload-dialog__header"><div><p class="page-kicker">Nạp tài liệu có kiểm soát</p><h2>Tải tài liệu vào phân vùng</h2><p>Server kiểm tra quyền tài khoản, thiết bị, đơn vị, nhiệm vụ và Step-Up trước khi lưu tệp.</p></div><button class="document-reader-dialog__close" id="document-upload-close" type="button" aria-label="Đóng">×</button></header>
       <label class="document-upload-field">Phân vùng dữ liệu<select name="zone_id" required><option value="public">public — công khai</option><option value="internal">internal — nội bộ</option><option value="confidential">confidential — mật</option><option value="secret">secret — bí mật</option><option value="restricted">restricted — hạn chế đặc biệt</option></select></label>
       <label class="document-upload-field">Tệp tài liệu<input name="document" type="file" required><small>Tối đa 25 MB. Tệp trùng tên trong cùng phân vùng sẽ được thay thế.</small></label>
       <p class="document-upload-message" id="document-upload-message"></p>

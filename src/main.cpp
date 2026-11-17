@@ -48,27 +48,27 @@ namespace {
 
 const ProtectedResource kPublicDocument{
     "public_document", "public", 1,
-    "Noi dung tai lieu cong khai"
+    "Noi dung tai lieu cong khai", "shared", "public"
 };
 
 const ProtectedResource kInternalDocument{
     "internal_document", "internal", 2,
-    "Noi dung tai lieu noi bo"
+    "Noi dung tai lieu noi bo", "unit-a", "internal-a"
 };
 
 const ProtectedResource kConfidentialDocument{
     "confidential_document", "confidential", 3,
-    "Noi dung tai lieu mat cap noi bo"
+    "Noi dung tai lieu mat cap noi bo", "unit-a", "sensitive-a"
 };
 
 const ProtectedResource kSecretDocument{
     "secret_document", "secret", 4,
-    "Noi dung tai lieu mat"
+    "Noi dung tai lieu mat", "unit-a", "secret-a"
 };
 
 const ProtectedResource kRestrictedDocument{
     "restricted_document", "restricted", 5,
-    "Noi dung tai lieu han che dac biet"
+    "Noi dung tai lieu han che dac biet", "unit-a", "restricted-a"
 };
 
 const std::array<std::string_view, 5> kDocumentZones{
@@ -1631,9 +1631,9 @@ int main() {
         const httplib::Request& request,
         httplib::Response& response
     ) {
-        const auto admin =
-            authenticate_admin_request(request, auth_service, response);
-        if (!admin.has_value()) {
+        const auto subject =
+            authenticate_request(request, auth_service, response);
+        if (!subject.has_value()) {
             return;
         }
 
@@ -1662,15 +1662,18 @@ int main() {
 
     server.Post("/api/data-zones/upload", [
         &auth_service,
+        &device_registry,
+        &mfa_service,
+        &access_service,
         &document_storage_directory,
         &audit_logger
     ](
         const httplib::Request& request,
         httplib::Response& response
     ) {
-        const auto admin =
-            authenticate_admin_request(request, auth_service, response);
-        if (!admin.has_value()) return;
+        const auto subject =
+            authenticate_request(request, auth_service, response);
+        if (!subject.has_value()) return;
 
         if (!request.is_multipart_form_data() ||
             !request.form.has_field("zone_id") ||
@@ -1682,13 +1685,90 @@ int main() {
 
         const std::string zone_id = request.form.get_field("zone_id");
         const httplib::FormData file = request.form.get_file("document");
-        if (resource_for_zone(zone_id) == nullptr ||
+        const ProtectedResource* resource = resource_for_zone(zone_id);
+        if (resource == nullptr ||
             !safe_document_name(file.filename)) {
             send_json(response, 400, {{"error", "INVALID_DOCUMENT_NAME_OR_ZONE"}});
             return;
         }
         if (file.content.empty() || file.content.size() > 25 * 1024 * 1024) {
             send_json(response, 413, {{"error", "INVALID_DOCUMENT_SIZE"}});
+            return;
+        }
+
+        // Quyen ghi duoc danh gia bang cung policy voi quyen doc.  Chi reader
+        // token da gan voi mot thiet bi duoc cap phat moi duoc phep upload.
+        if (!request.has_header("X-Device-ID") ||
+            !request.has_header("X-Location-ID")) {
+            send_json(response, 400, {{"error", "MISSING_ACCESS_CONTEXT"}});
+            return;
+        }
+        const std::string device_id = request.get_header_value("X-Device-ID");
+        const std::string location_id = request.get_header_value("X-Location-ID");
+        if (mfa_service.is_device_locked(device_id)) {
+            send_json(response, 423, {{"error", "MFA_DEVICE_LOCKED"}});
+            return;
+        }
+        if (subject->auth_level > 1 &&
+            (subject->mfa_challenge_id.empty() ||
+             !mfa_service.is_challenge_active(
+                 subject->mfa_challenge_id, subject->username))) {
+            send_json(response, 401, {{"error", "MFA_SESSION_REVOKED"}});
+            return;
+        }
+
+        const bool managed_reader_session =
+            !subject->reader_device_id.empty() &&
+            subject->reader_device_id == device_id &&
+            subject->reader_location_id == location_id;
+        if (!managed_reader_session) {
+            send_json(response, 403, {
+                {"error", "READER_CONTEXT_REQUIRED"},
+                {"message", "Can dung phien doc da duoc gan voi thiet bi de tai tai lieu len"}
+            });
+            return;
+        }
+
+        const AccessRequest access_request{
+            *subject,
+            device_id,
+            location_id,
+            true,
+            client_source_ip(request),
+            true,
+            *resource,
+            "write"
+        };
+        const AccessDecision decision = access_service.authorize(access_request);
+        if (!decision.policy_available) {
+            send_json(response, 502, {{"error", decision.reason_code}});
+            return;
+        }
+        if (decision.effect == "STEP_UP") {
+            const MfaChallenge challenge = mfa_service.issue_challenge(
+                *subject,
+                decision.required_auth_level,
+                device_id,
+                decision.resource_id
+            );
+            json body = decision_json(decision);
+            body["challenge_id"] = challenge.challenge_id;
+            body["expires_at"] = challenge.expires_at;
+            body["challenge_type"] = "ADMIN_APPROVED_CODE";
+            body["mfa_status"] = "PENDING_ADMIN_CODE";
+            send_json(response, 403, body);
+            return;
+        }
+        if (!decision.is_permitted()) {
+            audit_logger.write({
+                {"event_type", "STORED_DOCUMENT_UPLOAD_DENY"},
+                {"username", subject->username},
+                {"device_id", device_id},
+                {"data_zone", zone_id},
+                {"reason_code", decision.reason_code},
+                {"severity", decision.severity}
+            });
+            send_json(response, 403, decision_json(decision));
             return;
         }
 
@@ -1703,7 +1783,8 @@ int main() {
 
         audit_logger.write({
             {"event_type", "STORED_DOCUMENT_UPLOADED"},
-            {"actor", admin->username},
+            {"actor", subject->username},
+            {"device_id", device_id},
             {"data_zone", zone_id},
             {"stored_file", file.filename},
             {"file_size", file.content.size()},
@@ -1747,6 +1828,8 @@ int main() {
                 {"allowed_device_ids", user.value(
                     "allowed_device_ids", json::array()
                 )},
+                {"organization_unit", user.value("organization_unit", "unit-a")},
+                {"assigned_tasks", user.value("assigned_tasks", json::array())},
                 {"temporary_session_minutes", user.value(
                     "temporary_session_minutes", 0
                 )}
@@ -1813,7 +1896,9 @@ int main() {
             const json body = json::parse(request.body);
             const UserProvisioningResult result = auth_service.create_user(
                 body.value("username", ""),
-                body.value("role", "")
+                body.value("role", ""),
+                body.value("organization_unit", "unit-a"),
+                body.value("assigned_tasks", std::vector<std::string>{})
             );
             if (!result.success) {
                 const int status = result.code == "USERNAME_ALREADY_EXISTS"
@@ -1831,6 +1916,10 @@ int main() {
                 {"actor", admin->username},
                 {"username", result.username},
                 {"role", result.role},
+                {"organization_unit", body.value("organization_unit", "unit-a")},
+                {"assigned_tasks", body.value(
+                    "assigned_tasks", std::vector<std::string>{}
+                )},
                 {"reason_code", "INITIAL_PASSWORD_ASSIGNED"},
                 {"severity", "info"}
             });
