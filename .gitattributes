@@ -3,3 +3,5 @@ Makefile text eol=lf
 CMakeLists.txt text eol=lf
 CMakePresets.json text eol=lf
 vcpkg.json text eol=lf
+scripts/*.sh text eol=lf
+scripts/*.command text eol=lf

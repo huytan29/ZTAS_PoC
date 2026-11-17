@@ -39,8 +39,9 @@ copy /Y "%ZTAS_PROJECT_ROOT%\scripts\install-client-macos.command" "%ZTAS_LAUNCH
 
 > "%ZTAS_BUNDLE_DIR%\ztas-client-config.cmd" echo set "ZTAS_SERVER_IP=%ZTAS_SERVER_IP%"
 >> "%ZTAS_BUNDLE_DIR%\ztas-client-config.cmd" echo set "ZTAS_DNS_MODE=%ZTAS_DNS_MODE%"
-> "%ZTAS_BUNDLE_DIR%\ztas-client-config.sh" echo ZTAS_SERVER_IP='%ZTAS_SERVER_IP%'
->> "%ZTAS_BUNDLE_DIR%\ztas-client-config.sh" echo ZTAS_DNS_MODE='%ZTAS_DNS_MODE%'
+rem Shell config must use LF.  CMD echo writes CRLF, which turns an empty
+rem ZTAS_DNS_MODE into a hidden carriage-return argument on Ubuntu/macOS.
+powershell -NoProfile -Command "$content = 'ZTAS_SERVER_IP=' + $env:ZTAS_SERVER_IP + [char]10 + 'ZTAS_DNS_MODE=' + $env:ZTAS_DNS_MODE + [char]10; [System.IO.File]::WriteAllText((Join-Path $env:ZTAS_BUNDLE_DIR 'ztas-client-config.sh'), $content, [System.Text.UTF8Encoding]::new($false))"
 
 echo.
 echo [DONE] Thu muc cai dat: %ZTAS_BUNDLE_DIR%

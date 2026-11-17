@@ -233,7 +233,8 @@ Các `provision-client-*`, `ztas-client-config.*` và CA rời là helper nội 
 không cấp trực tiếp cho end user. Installer cuối sẽ tự chứa CA, hostname,
 cấu hình Locator và logic cài đặt. Hệ điều hành vẫn phải yêu cầu UAC/mật khẩu
 administrator khi cài CA — đây là biện pháp bảo vệ bắt buộc, không thể và
-không nên bỏ qua bằng trình duyệt hay script.
+không nên bỏ qua bằng trình duyệt hay script. Sau khi kiểm tra HTTPS thành
+công, installer tự mở trình duyệt ở trang `https://ztas.ptit:8443/connect-device`.
 
 ### macOS: tạo installer PKG
 

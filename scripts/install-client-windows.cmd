@@ -15,4 +15,8 @@ if not exist "%ZTAS_BUNDLE_DIR%ztas-local-ca.crt" (
 
 call "%ZTAS_BUNDLE_DIR%ztas-client-config.cmd"
 call "%ZTAS_BUNDLE_DIR%provision-client-windows.cmd" "%ZTAS_SERVER_IP%" "%ZTAS_BUNDLE_DIR%ztas-local-ca.crt" "%ZTAS_DNS_MODE%"
-exit /b %errorlevel%
+if errorlevel 1 exit /b %errorlevel%
+
+start "ZTAS - Ket noi thiet bi" "https://ztas.ptit:8443/connect-device"
+echo [DONE] Da mo trinh duyet den trang ket noi thiet bi.
+exit /b 0
