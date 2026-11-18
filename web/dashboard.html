@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="/assets/common.css">
   <link rel="stylesheet" href="/assets/dashboard.css?v=7">
   <script defer src="/assets/common.js"></script>
-  <script defer src="/assets/dashboard.js?v=11"></script>
+  <script defer src="/assets/dashboard.js?v=20261118-1"></script>
 </head>
 <body>
   <header class="topbar">
@@ -144,13 +144,26 @@
       <label class="form-field">Device ID<input name="device_id" placeholder="linux-client-01" pattern="[a-z0-9][a-z0-9-]{2,63}" required><small>Chỉ dùng chữ thường, số và dấu gạch ngang.</small></label>
       <label class="form-field">Tên hiển thị<input name="device_name" placeholder="Ubuntu VMware phòng Lab"><small>Chỉ dùng để admin nhận biết thiết bị trên Dashboard.</small></label>
       <label class="form-field">Loại thiết bị<select name="device_type"><option value="macos">macOS</option><option value="windows">Windows</option><option value="ubuntu">Ubuntu / Linux</option><option value="docker">Docker client</option><option value="unknown" selected>Không xác định</option></select></label>
-      <label class="form-field">Profile cấp phát<select name="enrollment_profile"><option value="manual">Manual — admin tự phân loại</option><option value="guest">Guest — Trust 1 · external-network</option><option value="unmanaged">Unmanaged — Trust 2 · external-network</option><option value="managed-vm" selected>Managed VM — Trust 3 · lab-network</option><option value="trusted">Trusted — Trust 4 · campus-network</option><option value="secure">Secure — Trust 5 · secure-zone</option></select></label>
+      <label class="form-field">Profile cấp phát<select name="enrollment_profile"><option value="manual">Manual — admin tự phân loại</option><option value="guest">Guest — Trust 1 · Vùng 0</option><option value="unmanaged">Unmanaged — Trust 2 · Vùng 0</option><option value="managed-vm" selected>Managed VM — Trust 3 · Vùng 2</option><option value="trusted">Trusted — Trust 4 · Vùng 3</option><option value="secure">Secure — Trust 5 · Vùng 4</option></select></label>
       <label class="form-field">Độ tin cậy<select name="trust_level" required><option value="1">Level 1 — Guest</option><option value="2">Level 2 — Basic</option><option value="3" selected>Level 3 — Managed</option><option value="4">Level 4 — Trusted</option><option value="5">Level 5 — Secure</option></select></label>
-      <label class="form-field">Vùng mạng<select name="location_id" required><option value="external-network">external-network</option><option value="vpn-network">vpn-network</option><option value="lab-network" selected>lab-network</option><option value="campus-network">campus-network</option><option value="secure-zone">secure-zone</option></select></label>
+      <label class="form-field">Vùng mạng<select name="location_id" required><option value="external-network">Vùng 0 — Mạng bên ngoài</option><option value="vpn-network">Vùng 1 — Mạng VPN</option><option value="lab-network" selected>Vùng 2 — Mạng phòng Lab</option><option value="campus-network">Vùng 3 — Mạng nội bộ cơ quan</option><option value="secure-zone">Vùng 4 — Vùng bảo mật cao</option></select></label>
       <label class="form-field">IPv4 / IPv6 được phép<input name="allowed_ip_address" placeholder="Tự điền khi duyệt yêu cầu thiết bị" required><small>ZTAS chỉ cho phép truy cập từ đúng địa chỉ IP quan sát được. IPv4 và IPv6 đều được hỗ trợ.</small></label>
       <label class="form-field">Tài khoản được gán<select name="assigned_username" required><option value="">Đang tải tài khoản…</option></select><small>Thiết bị chỉ xuất hiện Dashboard sau khi gán tài khoản.</small></label>
       <p class="form-message" id="enroll-device-message"></p>
       <footer class="modal__footer"><button class="button button--secondary" type="button" data-close-dialog="enroll-device-dialog">Hủy</button><button class="button button--primary" type="submit">Cấp phát thiết bị</button></footer>
+    </form>
+  </dialog>
+
+  <dialog class="modal" id="device-access-dialog">
+    <form class="modal__card" id="device-access-form">
+      <header class="modal__header"><div><h2>Quản trị quyền thiết bị</h2><p id="device-access-device-label">Thiết bị</p></div><button class="icon-button" type="button" data-close-dialog="device-access-dialog">×</button></header>
+      <div class="permission-box"><strong>Nguyên tắc Zero Trust</strong><span>Nâng Trust hoặc vùng mạng chỉ thay đổi điều kiện đánh giá thiết bị. Quyền đọc cuối cùng vẫn bị giới hạn bởi vai trò, đơn vị, nhiệm vụ và MFA.</span></div>
+      <label class="form-field">Mức tin cậy thiết bị<select name="trust_level" required><option value="1">Cấp 1 — Khách</option><option value="2">Cấp 2 — Cơ bản</option><option value="3">Cấp 3 — Thiết bị được quản lý</option><option value="4">Cấp 4 — Tin cậy</option><option value="5">Cấp 5 — Bảo mật cao</option></select></label>
+      <label class="form-field">Vùng mạng<select name="location_id" required><option value="external-network">Vùng 0 — Mạng bên ngoài</option><option value="vpn-network">Vùng 1 — Mạng VPN</option><option value="lab-network">Vùng 2 — Mạng phòng Lab</option><option value="campus-network">Vùng 3 — Mạng nội bộ cơ quan</option><option value="secure-zone">Vùng 4 — Vùng bảo mật cao</option></select><small>Sau khi đổi vùng, người dùng đang mở tài liệu cần đăng xuất rồi đăng nhập lại để lấy ngữ cảnh mới.</small></label>
+      <div class="assignment-current"><strong>Tài khoản đang được phép sử dụng thiết bị</strong><div class="assignment-chip-list" id="device-access-account-list"></div></div>
+      <label class="form-field">Cấp thêm quyền cho tài khoản<select id="device-access-account-select"><option value="">Đang tải tài khoản…</option></select><small>Chỉ tài khoản được gán mới có thể dùng thiết bị này để yêu cầu đọc tài liệu.</small></label>
+      <p class="form-message" id="device-access-message"></p>
+      <footer class="modal__footer"><button class="button button--secondary" type="button" id="device-access-grant-button">+ Cấp quyền tài khoản</button><button class="button button--primary" type="submit">Lưu Trust và vùng mạng</button></footer>
     </form>
   </dialog>
 

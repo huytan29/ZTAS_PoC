@@ -99,7 +99,8 @@ public:
         const std::string& username,
         const std::string& role,
         const std::string& organization_unit = "unit-a",
-        const std::vector<std::string>& assigned_tasks = {}
+        const std::vector<std::string>& assigned_tasks = {},
+        const std::string& task_description = ""
     ) const;
 
     // Cap lai Account Key cho tai khoan co san va vo hieu hoa key cu ngay lap tuc.

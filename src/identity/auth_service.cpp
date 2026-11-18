@@ -228,6 +228,13 @@ bool valid_attribute_id(const std::string& value) {
     return value.front() != '-' && value.back() != '-';
 }
 
+bool valid_task_description(const std::string& value) {
+    if (value.size() > 240) return false;
+    return std::none_of(value.begin(), value.end(), [](unsigned char character) {
+        return character < 0x20 && character != '\t';
+    });
+}
+
 std::string unit_suffix(const std::string& organization_unit) {
     constexpr std::string_view prefix = "unit-";
     if (organization_unit.rfind(prefix, 0) == 0 &&
@@ -641,7 +648,8 @@ UserProvisioningResult AuthService::create_user(
     const std::string& username,
     const std::string& role,
     const std::string& organization_unit,
-    const std::vector<std::string>& assigned_tasks
+    const std::vector<std::string>& assigned_tasks,
+    const std::string& task_description
 ) const {
     if (!valid_username(username)) {
         return {
@@ -682,6 +690,15 @@ UserProvisioningResult AuthService::create_user(
             };
         }
     }
+    if (!valid_task_description(task_description)) {
+        return {
+            false,
+            "INVALID_TASK_DESCRIPTION",
+            "Mo ta nhiem vu toi da 240 ky tu va khong duoc chua ky tu dieu khien",
+            "",
+            ""
+        };
+    }
 
     std::lock_guard<std::mutex> lock(mutex_);
     try {
@@ -714,6 +731,7 @@ UserProvisioningResult AuthService::create_user(
             {"role", role},
             {"organization_unit", organization_unit},
             {"assigned_tasks", effective_tasks},
+            {"task_description", task_description},
             {"password_hash", create_password_hash("ptit@123")},
             {"account_key_hash", create_password_hash(account_key)},
             {"account_key_issued_at", current_epoch()},

@@ -72,11 +72,11 @@ tam chay tren MacBook ghi policy, cap Device Key va ghi audit log.
 
    | Profile | Trust | Vung mac dinh |
    | --- | ---: | --- |
-   | `guest` | 1 | `external-network` |
-   | `unmanaged` | 2 | `external-network` |
-   | `managed-vm` | 3 | `lab-network` |
-   | `trusted` | 4 | `campus-network` |
-   | `secure` | 5 | `secure-zone` |
+   | `guest` | 1 | Vùng 0 — `external-network` |
+   | `unmanaged` | 2 | Vùng 0 — `external-network` |
+   | `managed-vm` | 3 | Vùng 2 — `lab-network` |
+   | `trusted` | 4 | Vùng 3 — `campus-network` |
+   | `secure` | 5 | Vùng 4 — `secure-zone` |
 
 3. Gui ma cho VM/client. Ma chi dung mot lan va mac dinh het han sau 10 phut.
 4. Tren VM/client, gui yeu cau ket noi. Vi du tu Ubuntu:

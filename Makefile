@@ -82,7 +82,8 @@ client-bundle: client-installers
 run: provision opa-up env
 	@powershell -NoProfile -Command "$$running = $$false; try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://127.0.0.1:8020/health | Out-Null; $$running = $$true } catch {}; if ($$running) { Write-Output 'ZTAS dang chay tren cong 8020 do mot tien trinh khac quan ly.' } else { $$line = Get-Content 'runtime/ztas.env' | Where-Object { $$_ -like 'APP_TOKEN_SECRET=*' } | Select-Object -First 1; if (-not $$line) { throw 'Khong tim thay APP_TOKEN_SECRET trong runtime/ztas.env' }; $$env:APP_TOKEN_SECRET = $$line.Substring('APP_TOKEN_SECRET='.Length); $$env:ZTAS_BIND_ADDRESS = '127.0.0.1'; $$env:ZTAS_SECURE_COOKIES = 'true'; $$env:ZTAS_TRUST_LOOPBACK_PROXY = 'true'; Start-Process -FilePath '$(ZTAS_BIN)' -WorkingDirectory '.' -RedirectStandardOutput 'runtime/ztas.stdout.log' -RedirectStandardError 'runtime/ztas.stderr.log'; Start-Sleep -Milliseconds 500; try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://127.0.0.1:8020/health | Out-Null } catch { throw 'ZTAS khong khoi dong. Xem runtime/ztas.stderr.log' } }"
 	@$(MAKE) --no-print-directory https-proxy
-	@echo Dashboard: https://$(HTTPS_HOST):8443/dashboard
+	@start "ZTAS - Dang nhap" "https://$(HTTPS_HOST):8443/login"
+	@echo Da mo trang dang nhap: https://$(HTTPS_HOST):8443/login
 
 demo: run
 	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force data\logs | Out-Null; $$file = 'data/logs/' + (Get-Date -Format yyyy-MM-dd) + '.jsonl'; New-Item -ItemType File -Force $$file | Out-Null; Get-Content -Tail 30 -Wait $$file"
@@ -217,7 +218,8 @@ run: provision opa-up env
 		echo "Da khoi dong ZTAS (PID $$(cat runtime/ztas.pid))."; \
 	fi
 	@$(MAKE) --no-print-directory https-proxy
-	@echo "Dashboard: https://$(HTTPS_HOST):8443/dashboard"
+	@open "https://$(HTTPS_HOST):8443/login"
+	@echo "Da mo trang dang nhap: https://$(HTTPS_HOST):8443/login"
 
 demo: run
 	@log_file="data/logs/$$(date +%F).jsonl"; mkdir -p data/logs; touch "$$log_file"; tail -n 30 -f "$$log_file"

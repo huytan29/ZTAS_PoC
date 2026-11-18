@@ -1830,6 +1830,7 @@ int main() {
                 )},
                 {"organization_unit", user.value("organization_unit", "unit-a")},
                 {"assigned_tasks", user.value("assigned_tasks", json::array())},
+                {"task_description", user.value("task_description", "")},
                 {"temporary_session_minutes", user.value(
                     "temporary_session_minutes", 0
                 )}
@@ -1898,7 +1899,8 @@ int main() {
                 body.value("username", ""),
                 body.value("role", ""),
                 body.value("organization_unit", "unit-a"),
-                body.value("assigned_tasks", std::vector<std::string>{})
+                body.value("assigned_tasks", std::vector<std::string>{}),
+                body.value("task_description", "")
             );
             if (!result.success) {
                 const int status = result.code == "USERNAME_ALREADY_EXISTS"
@@ -1920,6 +1922,7 @@ int main() {
                 {"assigned_tasks", body.value(
                     "assigned_tasks", std::vector<std::string>{}
                 )},
+                {"task_description", body.value("task_description", "")},
                 {"reason_code", "INITIAL_PASSWORD_ASSIGNED"},
                 {"severity", "info"}
             });
@@ -2953,6 +2956,60 @@ int main() {
                 {"message", result.message},
                 {"device_id", result.device_id},
                 {"allowed_ip_address", source_ip}
+            });
+        } catch (const json::exception&) {
+            send_json(response, 400, {{"error", "INVALID_JSON"}});
+        }
+    });
+
+    server.Put("/api/devices/security-context", [
+        &auth_service,
+        &device_management_service,
+        &policy_client,
+        &devices_policy_file,
+        &audit_logger
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto admin =
+            authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) return;
+
+        try {
+            const json body = json::parse(request.body);
+            const DeviceOperationResult result =
+                device_management_service.update_security_context(
+                    body.value("device_id", ""),
+                    body.value("trust_level", 0),
+                    body.value("location_id", "")
+                );
+            if (!result.success) {
+                const int status = result.code == "DEVICE_NOT_FOUND" ? 404 : 400;
+                send_json(response, status, {
+                    {"error", result.code}, {"message", result.message}
+                });
+                return;
+            }
+
+            const bool policy_synced =
+                policy_client.sync_devices_policy(devices_policy_file);
+            audit_logger.write({
+                {"event_type", "DEVICE_SECURITY_CONTEXT_UPDATED"},
+                {"actor", admin->username},
+                {"device_id", result.device_id},
+                {"trust_level", result.trust_level},
+                {"location_id", result.location_id},
+                {"reason_code", "DEVICE_TRUST_OR_LOCATION_CHANGED"},
+                {"policy_synced", policy_synced},
+                {"severity", "high"}
+            });
+            send_json(response, 200, {
+                {"message", result.message},
+                {"device_id", result.device_id},
+                {"trust_level", result.trust_level},
+                {"location_id", result.location_id},
+                {"policy_synced", policy_synced}
             });
         } catch (const json::exception&) {
             send_json(response, 400, {{"error", "INVALID_JSON"}});

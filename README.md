@@ -1,278 +1,388 @@
 # ZTAS PoC
 
-PoC Zero Trust Access System (C++17): ZTAS xác thực người dùng và thiết bị,
-hỏi OPA để lấy quyết định policy, rồi mới đọc tài liệu từ SQLite. Dịch vụ chính
-chạy qua HTTPS tại `https://ztas.ptit:8443`; OPA chạy trong Docker tại
-`127.0.0.1:8181`.
+Hệ thống Zero Trust cho môi trường lab: xác thực tài khoản, kiểm tra thiết bị,
+IP, trust, unit, task và MFA trước khi cho đọc hoặc nạp tài liệu.
 
-## Hỗ trợ nền tảng
-
-Mã nguồn, build và luồng chạy hỗ trợ macOS và Windows x64. Không có thành phần
-runtime nào phụ thuộc riêng vào macOS; khác biệt chỉ nằm ở công cụ cài đặt và
-GNU Make và dependency manager.
-
-| Nền tảng | Toolchain | Cài dependency |
+| Server | Máy khách | URL |
 | --- | --- | --- |
-| macOS Apple Silicon (M1/M2/M3) | CMake 3.20+, Xcode Command Line Tools | vcpkg tự tải khi build |
-| Windows 10/11 x64 hoặc Windows Server tương thích | CMake 3.20+, MinGW-w64 x64 | vcpkg tự tải khi build |
+| Windows 10/11 hoặc macOS | Windows, Ubuntu/Linux, macOS | `https://ztas.ptit:8443` |
 
-Docker Desktop phải đang chạy trên cả hai nền tảng. `Makefile` là điểm vào duy
-nhất để build/vận hành; không có script khởi động riêng.
+> Mỗi môi trường chỉ chạy **một server ZTAS**. Server chạy ZTAS, Docker OPA và
+> Caddy. Máy khách chỉ nhận gói `Client_PoC`.
 
-## Khởi tạo source trên máy mới
+## Mục lục
 
-Hai script bootstrap chỉ clone mã nguồn từ GitHub vào một thư mục mới; chúng
-không tự cài dependency, không ghi đè source sẵn có và không tự chạy dịch vụ.
-Vì vậy chúng an toàn để dùng lần đầu trên máy Windows hoặc macOS.
+1. [Triển khai Windows Server](#1-triển-khai-windows-server)
+2. [Triển khai macOS Server](#2-triển-khai-macos-server)
+3. [Thiết lập admin và tài khoản](#3-thiết-lập-admin-và-tài-khoản)
+4. [Cấp phát máy khách](#4-cấp-phát-máy-khách)
+5. [Vận hành và kiểm thử](#5-vận-hành-và-kiểm-thử)
+6. [Xử lý sự cố](#6-xử-lý-sự-cố)
 
-**Windows (CMD):** tải `scripts/bootstrap-windows.cmd` từ repository hoặc copy
-script này sang máy mới, sau đó chạy:
+---
+
+# 1. Triển khai Windows Server
+
+## 1.1 Cài công cụ một lần
+
+Mở **CMD bằng Run as administrator**. Cài Git for Windows, CMake **4.4.4+**,
+MSYS2 MinGW-w64 x64 và Docker Desktop. Caddy không cần cài trước: lệnh deploy
+tự tải Caddy vào `C:\Tools\Caddy` nếu chưa có.
+
+Sau khi cài MSYS2, mở **MSYS2 MinGW x64** rồi chạy:
+
+```bash
+pacman -Syu
+pacman -S --needed mingw-w64-x86_64-toolchain
+```
+
+Thêm đường dẫn sau vào PATH Windows, sau đó mở CMD mới:
+
+```text
+C:\msys64\mingw64\bin
+```
+
+Kiểm tra trong CMD:
 
 ```cmd
-bootstrap-windows.cmd
+git --version
+cmake --version
+where g++
+where mingw32-make
+docker info
 ```
 
-Mặc định source sẽ nằm tại `%USERPROFILE%\source\ZTAS_PoC`. Có thể chỉ định
-thư mục đích, ví dụ `bootstrap-windows.cmd E:\Projects\ZTAS_PoC`.
+Nếu `docker info` lỗi, mở Docker Desktop và đợi **Engine running**.
 
-**macOS:**
-
-```zsh
-sh scripts/bootstrap-macos.sh
-```
-
-Mặc định source sẽ nằm tại `~/source/ZTAS_PoC`; có thể truyền thư mục đích làm
-tham số thứ nhất. Sau khi clone, tiếp tục theo hướng dẫn build của từng nền
-tảng phía dưới.
-
-Windows 8.1 trở xuống không được hỗ trợ bởi phiên bản `cpp-httplib` hiện tại
-(`0.65+`), nên dự án target Windows 10 trở lên.
-
-## macOS
-
-```zsh
-xcode-select --install
-# Cai CMake mot lan neu may chua co: brew install cmake
-make build
-```
-
-Lần build đầu tự clone `.vcpkg/`, bootstrap vcpkg và tải OpenSSL, SQLite,
-cpp-httplib và nlohmann-json cho Apple Silicon (`arm64-osx`). Mac Intel dùng
-`make build VCPKG_TARGET_TRIPLET=x64-osx`.
-
-Để khởi động đầy đủ môi trường demo sau khi build, chủ động chạy `make run`.
-Lệnh này sẽ cấp Device Key cho các thiết bị `registered: true`, khởi động OPA
-và sinh `runtime/ztas.env` nếu tệp chưa tồn tại.
-
-## Windows
-
-### Triển khai server bằng một lệnh
-
-Sau khi đã cài MinGW-w64, CMake, Git và Docker Desktop, mở **CMD bằng
-Run as administrator** tại thư mục dự án rồi chạy duy nhất:
+## 1.2 Clone source
 
 ```cmd
+cd /d E:\
+git clone https://github.com/huytan29/ZTAS_PoC.git ZTAS_PoC
+cd /d E:\ZTAS_PoC
+```
+
+## 1.3 Deploy HTTPS
+
+Trong CMD Administrator:
+
+```cmd
+cd /d E:\ZTAS_PoC
+set VCPKG_FORCE_SYSTEM_BINARIES=
 mingw32-make deploy
 ```
 
-Lệnh tự tìm MinGW tại `C:\msys64\mingw64\bin`, tự bootstrap `.vcpkg/`, tự
-nhận IPv4 LAN, build ZTAS, chạy HTTPS/OPA/Locator, mở firewall và tạo tools máy
-khách.
+Lệnh này tự động build, khởi động OPA/ZTAS/Caddy, mở Firewall TCP `8443` và UDP
+`8021`, tạo Private CA, tạo gói `Client_PoC` và tự mở trang đăng nhập ZTAS.
 
-1. Cài **CMake**, **MinGW-w64 x64**, **Git** và **Docker Desktop**. GNU Make
-   đi kèm MinGW-w64; thư mục `bin` của MinGW-w64 phải nằm trong `PATH`; kiểm tra
-   được cả `g++.exe` và `mingw32-make.exe` từ CMD.
-2. Trong CMD, build trực tiếp:
+Kết quả mong đợi:
 
-   ```cmd
-   cd /d E:\ZTAS_PoC
-   mingw32-make build
-   ```
+```text
+[DONE] Dashboard: https://ztas.ptit:8443/dashboard
+[DONE] Tools cho may khach: E:\ZTAS_PoC\Client_PoC
+```
 
-## Ứng dụng Windows và iPhone/iPad
+Nếu server không tự nhận IP LAN, xem bằng `ipconfig`, sau đó dùng ví dụ:
 
-Giao diện có thể cài như một **PWA** (Progressive Web App), dùng cùng code và
-policy với bản web nên không có giao diện/luồng quyền riêng bị lệch.
+```cmd
+mingw32-make deploy-https ZTAS_SERVER_IP=192.168.2.2
+```
 
-- **Windows:** mở Dashboard bằng Microsoft Edge hoặc Chrome, chọn biểu tượng
-  cài đặt ứng dụng trên thanh địa chỉ (hoặc menu `…` → *Apps* → *Install*).
-- **iPhone/iPad:** mở URL Dashboard qua HTTPS trong Safari, chọn *Chia sẻ* →
-  *Thêm vào Màn hình chính*. Safari sẽ mở ứng dụng ở chế độ độc lập.
+## 1.4 Kiểm tra
 
-PWA vẫn cần kết nối tới ZTAS để xác thực, kiểm tra policy và đọc dữ liệu; chỉ
-các tài nguyên giao diện được cache cục bộ.
+```cmd
+curl.exe --ssl-no-revoke https://ztas.ptit:8443/health
+```
 
-   Nếu bản MinGW-w64 của bạn cung cấp lệnh `make.exe`, `make build` cũng tương
-   đương.
+Kết quả phải có `"status":"UP"`.
 
-`rmdir /s /q build\windows` chỉ xóa tệp build sinh bởi CMake. Cần chạy nó khi
-đổi từ một toolchain/triplet cũ (ví dụ `x64-windows`) sang MinGW-w64.
+---
 
-Vcpkg tự clone vào `.vcpkg/`, đọc [vcpkg.json](vcpkg.json) và cài `cpp-httplib`,
-`nlohmann-json`, OpenSSL và SQLite theo manifest khi CMake cấu hình lần đầu.
-Không cần đặt `VCPKG_ROOT` toàn cục; dependency cache nằm trong `.vcpkg/` của
-project và đã được `.gitignore` loại trừ khỏi Git.
+# 2. Triển khai macOS Server
 
-Không cần thay đổi PowerShell Execution Policy vì dự án không chạy `.ps1`.
+## 2.1 Cài công cụ một lần
 
-## Lệnh Make
+Caddy chỉ cần trên MacBook khi MacBook là **server**.
 
-| Lệnh | Tác dụng |
+```zsh
+xcode-select --install
+```
+
+Cài Homebrew theo [brew.sh](https://brew.sh) nếu máy chưa có. Sau đó:
+
+```zsh
+brew install git cmake caddy
+brew install --cask docker
+open -a Docker
+docker info
+```
+
+## 2.2 Clone source và lấy IP
+
+```zsh
+mkdir -p ~/source
+cd ~/source
+git clone https://github.com/huytan29/ZTAS_PoC.git
+cd ZTAS_PoC
+ipconfig getifaddr en0
+```
+
+Nếu không có IP ở `en0`:
+
+```zsh
+ifconfig | grep -E '^[a-z0-9]+:'
+```
+
+## 2.3 Deploy HTTPS
+
+Ví dụ IP MacBook là `192.168.2.10`:
+
+```zsh
+cd ~/source/ZTAS_PoC
+make deploy-https ZTAS_SERVER_IP=192.168.2.10
+```
+
+Với Mac Intel:
+
+```zsh
+make deploy-https ZTAS_SERVER_IP=192.168.2.10 VCPKG_TARGET_TRIPLET=x64-osx
+```
+
+Nhập mật khẩu macOS khi script yêu cầu cập nhật `/etc/hosts` và System Keychain.
+Khi hoàn tất, trang đăng nhập ZTAS tự mở trong browser.
+Kiểm tra:
+
+```zsh
+curl --fail https://ztas.ptit:8443/health
+```
+
+---
+
+# 3. Thiết lập admin và tài khoản
+
+## 3.1 Thiết lập admin lần đầu
+
+Mở:
+
+```text
+https://ztas.ptit:8443/setup
+```
+
+Đặt mật khẩu mới cho `admin`. Khuyến nghị tối thiểu 12 ký tự gồm chữ hoa, chữ
+thường, số và ký tự đặc biệt. Hệ thống lưu PBKDF2 hash, không lưu mật khẩu rõ.
+
+Sau đó mở Dashboard:
+
+```text
+https://ztas.ptit:8443/dashboard
+```
+
+## 3.2 Tạo user
+
+1. Menu **Tài khoản** → **Tạo tài khoản**.
+2. Chọn role, đơn vị nghiệp vụ và nhiệm vụ/phạm vi.
+3. Lưu **Account Key** xuất hiện trong hộp thoại; key chỉ hiện một lần.
+4. Gửi key cho đúng người qua kênh an toàn.
+
+Mật khẩu khởi tạo user PoC là `ptit@123`; hãy đổi khi dùng ngoài lab. Khi key
+bị lộ, dùng **Cấp lại key** để vô hiệu hóa key cũ.
+
+## 3.3 Quyền tài liệu và upload
+
+| Role | Quyền đọc/nạp tối đa |
 | --- | --- |
-| `make build` | Chỉ cấu hình và build C++ cho đúng nền tảng hiện tại. |
-| `make provision` | Build, rồi cấp Device Key cho thiết bị đã đăng ký. |
-| `make opa-up` | Khởi động OPA; Docker Desktop phải được mở sẵn. |
-| `make scenario-test` | Chạy tự động 5 kịch bản kiểm thử của đề cương với OPA và lưu báo cáo JSON. |
-| `make run` | Chủ động chạy toàn bộ chuỗi provision + OPA + ZTAS. |
-| `make logs` | Theo dõi audit log hôm nay. |
-| `make stop` / `make down` | Dừng ZTAS / dừng cả ZTAS lẫn OPA. |
+| Guest | Cấp 1 |
+| Employee | Cấp 1–2 |
+| Manager | Cấp 1–3; Cấp 3 cần Step-Up 2 |
+| Engineer | Cấp 1–4; Cấp 4 cần Step-Up 3 |
+| Business admin | Cấp 1–5 trong phạm vi; Cấp 5 cần Step-Up 5 |
+| Admin kỹ thuật | Cấp 1–2; không đọc/nạp Cấp 3–5 |
 
-### Kiểm thử tự động 5 kịch bản đề cương
+Ngoài role, policy còn xét unit, task, thiết bị, IP, trust, location và MFA.
 
-Sau khi Docker Desktop sẵn sàng, chạy một lệnh tại thư mục source:
+---
 
-```cmd
-mingw32-make scenario-test
+# 4. Cấp phát máy khách
+
+## 4.1 Gói Client_PoC
+
+Deploy tự tạo:
+
+```text
+Client_PoC/
+├── Client/
+│   ├── CAI-ZTAS-Windows.cmd
+│   ├── CAI-ZTAS-Ubuntu.sh
+│   └── CAI-ZTAS-macOS.command
+├── ztas-local-ca.crt
+└── ztas-client-config.sh
 ```
 
-Trên macOS dùng `make scenario-test`. Lệnh build công cụ
-`ztas_scenario_test`, khởi động OPA và kiểm tra năm trường hợp: đúng đơn vị/
-nhiệm vụ, sai đơn vị, thiết bị chưa Trusted, quản lý sau Step-Up và quản trị
-kỹ thuật không được suy diễn quyền đọc tài liệu cấp cao. Kết quả hiện rõ
-`[PASS]`/`[FAIL]` trong terminal và được lưu tại
-`runtime/test-reports/scenario-report.json`. Công cụ chỉ đọc policy OPA; không
-tạo tài khoản, không đổi thiết bị và không ghi đè dữ liệu vận hành.
+Gửi **nguyên thư mục `Client_PoC`**, không gửi riêng file trong `Client/`.
+Có thể dùng LocalSend, USB quản trị, VMware Shared Folder, SMB đã xác thực hoặc
+MDM.
 
-## Vận hành và dữ liệu nhạy cảm
-
-- Không commit `runtime/`, `data/device_credentials.json`, database SQLite hay
-  audit log; các đường dẫn này đã nằm trong `.gitignore`.
-- Device Key chỉ xuất hiện lúc cấp phát. Cung cấp nó qua tệp `.env` của đúng
-  thiết bị, không đặt trong policy, Git hoặc log.
-- Server lắng nghe `0.0.0.0:8020` để máy ảo/container trong lab có thể kết nối.
-  Chỉ mở firewall cổng này trong mạng lab tin cậy.
-
-### HTTPS nội bộ với Caddy (Windows)
-
-`make run` tự chạy ZTAS ở loopback, tạo Caddyfile từ
-`deploy/Caddyfile.https.local.example`, rồi khởi động Caddy làm HTTPS proxy.
-Chỉ cần cài Caddy **một lần** tại `C:\Tools\Caddy\caddy.exe` trên Windows
-(hoặc `brew install caddy` trên macOS), rồi tạo DNS nội bộ (hoặc hosts entry)
-trỏ `ztas.ptit` đến IPv4 LAN hiện tại của máy chủ. Dùng hostname cố định thay
-vì IP giúp người dùng di chuyển mạng mà không mất URL, chứng chỉ hoặc browser
-device proof.
-
-Sau đó, chạy:
-
-```cmd
-mingw32-make run
-```
-
-`ZTAS_TRUST_LOOPBACK_PROXY` chỉ tin `X-Forwarded-For` khi kết nối TCP đến từ
-`127.0.0.1` hoặc `::1`; không bật biến này nếu không dùng Caddy native trên
-cùng máy. Client truy cập qua `https://ztas.ptit:8443/dashboard`, không qua
-cổng HTTP `8020`. Chứng chỉ `tls internal` cần được cài vào kho tin cậy của
-từng máy khách (Ubuntu/Windows) trước khi sử dụng.
-
-### Cấp phát máy khách HTTPS
-
-Sau khi server đã tạo `runtime/ztas-local-ca.crt`, admin chép tệp CA **và đúng
-một script theo hệ điều hành** đến máy khách qua kênh tin cậy (USB quản trị,
-thư mục VMware Shared Folder, MDM hoặc file share nội bộ đã xác thực). Ba
-script dưới đây cài CA, cập nhật ánh xạ `ztas.ptit` và kiểm tra HTTPS. Chúng
-cần quyền quản trị trên **máy khách**; người dùng cuối không cần chạy lại sau
-khi thiết bị đã được cấp phát.
-
-```cmd
-:: Windows client - CMD Run as administrator
-scripts\provision-client-windows.cmd 192.168.2.2 C:\Provisioning\ztas-local-ca.crt
-```
-
-```bash
-# Ubuntu client/VM
-sudo sh scripts/provision-client-ubuntu.sh 192.168.2.2 ~/Downloads/ztas-local-ca.crt
-
-# macOS client
-sudo sh scripts/provision-client-macos.sh 192.168.2.2 ~/Downloads/ztas-local-ca.crt
-```
-
-Nếu mạng đã có DNS nội bộ phân giải `ztas.ptit`, thêm `--use-dns` vào cuối
-lệnh để script không sửa file hosts. Các script in fingerprint SHA-256 của CA;
-admin phải đối chiếu fingerprint với tệp xuất trực tiếp từ server trước khi
-cài đặt. Chi tiết quy trình đa nền tảng nằm tại
-[docs/QUY_TRINH_HTTPS_DA_NEN_TANG.md](docs/QUY_TRINH_HTTPS_DA_NEN_TANG.md).
-
-Để người dùng cuối không phải nhập lệnh, admin tạo một **thư mục cài đặt** đã
-có sẵn CA và IP/DNS từ server:
+Khi server đổi IP, tạo lại gói:
 
 ```cmd
 mingw32-make client-installers ZTAS_SERVER_IP=192.168.2.2
 ```
 
-```bash
+```zsh
 make client-installers ZTAS_SERVER_IP=192.168.2.10
 ```
 
-Nếu đã có DNS nội bộ, tạo bundle không sửa hosts bằng cách thêm
-`ZTAS_DNS_MODE=--use-dns` vào lệnh Make.
+Nếu có DNS nội bộ cho `ztas.ptit`, thêm `ZTAS_DNS_MODE=--use-dns` vào cuối lệnh
+tạo gói để installer không sửa file hosts.
 
-Khi dùng `deploy-https`, bước tạo thư mục này diễn ra tự động ngay sau khi
-Caddy sinh CA; không cần chạy `client-installers` thủ công. `client-installers`
-chỉ hữu ích khi admin cần tạo lại tools sau đó.
+## 4.2 Windows client
 
-Thư mục build nội bộ được tạo tại `Client_PoC/`. Mục tiêu cấp
-phát cho end user là **một tệp duy nhất theo nền tảng**, không phải cả thư mục:
+1. Mở `Client_PoC\Client`.
+2. Double-click `CAI-ZTAS-Windows.cmd`.
+3. Chấp nhận UAC.
+4. Browser tự mở trang kết nối thiết bị sau khi HTTPS được kiểm tra thành công.
 
-| Máy khách | Tệp cấp cho người dùng | Thao tác của người dùng |
-| --- | --- | --- |
-| Windows | `CAI-ZTAS-Windows.cmd` | Double-click và chấp nhận UAC. |
-| macOS | `CAI-ZTAS-macOS.command` | Double-click và nhập mật khẩu macOS. |
-| Ubuntu/Linux | `CAI-ZTAS-Ubuntu.sh` | Mở/chạy tệp và nhập mật khẩu hệ thống. |
+Nếu cần, chuột phải file → **Run as administrator**.
 
-Các `provision-client-*`, `ztas-client-config.*` và CA rời là helper nội bộ,
-không cấp trực tiếp cho end user. Installer cuối sẽ tự chứa CA, hostname,
-cấu hình Locator và logic cài đặt. Hệ điều hành vẫn phải yêu cầu UAC/mật khẩu
-administrator khi cài CA — đây là biện pháp bảo vệ bắt buộc, không thể và
-không nên bỏ qua bằng trình duyệt hay script. Sau khi kiểm tra HTTPS thành
-công, installer tự mở trình duyệt ở trang `https://ztas.ptit:8443/connect-device`.
+## 4.3 Ubuntu/Linux client
 
-### macOS: tạo installer PKG
+Ví dụ gói ở `~/Downloads/Client_PoC`:
 
-Không phân phối file `.command` cho end user macOS vì quyền thực thi và
-Gatekeeper có thể chặn file được chuyển qua mạng. Trên chính MacBook đã chạy
-server, tạo package bằng:
+```bash
+cd ~/Downloads/Client_PoC/Client
+chmod +x CAI-ZTAS-Ubuntu.sh
+./CAI-ZTAS-Ubuntu.sh
+```
+
+Nhập mật khẩu Ubuntu khi được hỏi. Nếu thư mục VMware không cho thực thi:
+
+```bash
+cd ~/Downloads/Client_PoC/Client
+sh CAI-ZTAS-Ubuntu.sh
+```
+
+Firefox Ubuntu có thể dùng kho CA riêng. Nếu nó báo TLS warning, import:
+
+```text
+~/Downloads/Client_PoC/ztas-local-ca.crt
+```
+
+Trong Firefox: **Settings** → **Privacy & Security** → **Certificates** →
+**View Certificates** → **Authorities** → **Import** → tích **Trust this CA to
+identify websites**. Không chọn *Accept the Risk*.
+
+## 4.4 macOS client
+
+1. Mở `Client_PoC/Client` trong Finder.
+2. Double-click `CAI-ZTAS-macOS.command` và nhập mật khẩu macOS.
+3. Browser tự mở khi cài đặt thành công.
+
+Nếu thiếu quyền thực thi:
+
+```zsh
+cd ~/Downloads/Client_PoC/Client
+chmod +x CAI-ZTAS-macOS.command
+./CAI-ZTAS-macOS.command
+```
+
+Gatekeeper có thể yêu cầu chuột phải → **Open** một lần trong lab. Với triển
+khai thật, tạo PKG đã ký/notarized:
 
 ```zsh
 make client-pkg ZTAS_SERVER_IP=192.168.2.10
 ```
 
-Kết quả là `Client_PoC/Client/CaiDat-ZTAS-macOS.pkg`. Đây là bản lab chưa ký. Để phân
-phối cho end user, đặt `MACOS_INSTALLER_SIGN_IDENTITY` là Developer ID Installer
-rồi chạy lại, sau đó notarize package bằng Apple notary service.
+## 4.5 Duyệt thiết bị
 
-Trên Windows, có thể chạy bootstrap một lần bằng CMD quyền Administrator:
+1. Browser máy khách mở `https://ztas.ptit:8443/connect-device`.
+2. Nhập username, password và Account Key.
+3. Admin vào **Thiết bị** → **Yêu cầu kết nối chờ phê duyệt**.
+4. Kiểm tra máy, IP, profile, trust và location.
+5. Chọn **Phân loại & cấp quyền**.
+6. Máy khách tự chuyển sang trang Tài liệu sau khi được duyệt.
+
+Thiết bị cũ mất Browser Device Proof dùng chế độ **Thiết bị đã cấp**, sau đó
+admin chọn khôi phục thiết bị cũ.
+
+---
+
+# 5. Vận hành và kiểm thử
+
+## 5.1 Lệnh hằng ngày
+
+| Việc | Windows Server | macOS Server |
+| --- | --- | --- |
+| Build | `mingw32-make build` | `make build` |
+| Chạy đầy đủ và mở trang đăng nhập | `mingw32-make run` | `make run` |
+| Dừng ZTAS/Caddy | `mingw32-make stop` | `make stop` |
+| Dừng cả OPA | `mingw32-make down` | `make down` |
+| Xem audit log | `mingw32-make logs` | `make logs` |
+
+Sau `git pull`:
 
 ```cmd
-scripts\deploy-https-windows.cmd 192.168.2.2
+cd /d E:\ZTAS_PoC
+git pull
+set VCPKG_FORCE_SYSTEM_BINARIES=
+mingw32-make build
 ```
 
-Script tự xác định IPv4 LAN, tải Caddy nếu chưa có, cập nhật hosts của máy chủ,
-mở firewall cổng 8443, build/chạy ZTAS và xuất CA tại
-`runtime\ztas-local-ca.crt` để cài vào Ubuntu VM. Qua Make, dùng:
-`mingw32-make deploy-https ZTAS_SERVER_IP="IP_cua_PC"`.
-
-Trên macOS, chạy lệnh tương đương (script sẽ hỏi mật khẩu `sudo` để cập nhật
-`/etc/hosts` và Keychain):
-
-```sh
-make deploy-https ZTAS_SERVER_IP=192.168.2.10
+```zsh
+cd ~/source/ZTAS_PoC
+git pull
+make build
 ```
 
-## Đặt tài liệu theo phân vùng quyền
+Vcpkg tự tải dependency vào `.vcpkg/`; không cần đặt `VCPKG_ROOT` toàn cục.
 
-Khi ZTAS khởi động, hệ thống tạo các thư mục sau để chứa tài liệu thực tế của
-bạn. Có thể mở đường dẫn từ mục **Khu dữ liệu được bảo vệ** trên Dashboard
-(cần quyền admin) và sao chép tệp trực tiếp vào đúng phân vùng:
+## 5.2 Chạy 5 kịch bản đề cương
+
+Docker Desktop phải chạy.
+
+```cmd
+cd /d E:\ZTAS_PoC
+mingw32-make scenario-test
+```
+
+```zsh
+cd ~/source/ZTAS_PoC
+make scenario-test
+```
+
+Kết quả `PASS`/`FAIL` và báo cáo JSON:
+
+```text
+runtime/test-reports/scenario-report.json
+```
+
+Các kịch bản: đúng unit/task, sai unit, thiết bị untrusted, manager sau
+Step-Up, admin kỹ thuật bị từ chối tài liệu cấp cao.
+
+---
+
+# 6. Xử lý sự cố
+
+| Hiện tượng | Cách xử lý |
+| --- | --- |
+| `mingw32-make is not recognized` | Thêm `C:\msys64\mingw64\bin` vào PATH, mở CMD mới. |
+| `cmake is not recognized` | Cài CMake 4.4.4+, chọn *Add CMake to PATH*, mở CMD mới. |
+| `Could not fetch powershell-core` | Chạy `set VCPKG_FORCE_SYSTEM_BINARIES=` rồi build lại. |
+| Docker chưa sẵn sàng | Mở Docker Desktop, đợi **Engine running**. |
+| Caddy không khởi động | Xem `runtime/caddy.stderr.log`, kiểm tra cổng 8443. |
+| Không mở được `ztas.ptit` | Kiểm tra IP/DNS/firewall, tạo lại `Client_PoC` với IP mới. |
+| Firefox Ubuntu cảnh báo HTTPS | Import `ztas-local-ca.crt` theo Phần 4.3. |
+| Không đọc/nạp được tệp | Kiểm tra role, unit, task, trust, IP và MFA trong menu Nhật ký. |
+
+---
+
+# 7. Audit và dữ liệu nhạy cảm
+
+- Audit log ở `data/logs/`, giữ **5 ngày lịch**.
+- Menu **Nhật ký** → **Lưu riêng / tải** tạo snapshot tại `data/saved-logs/`.
+- Không commit/chia sẻ Account Key, Device Key, mật khẩu, CA private key,
+  `runtime/`, `data/device_credentials.json` hoặc tài liệu thật.
+
+Phân vùng tài liệu server:
 
 ```text
 data/documents/public/
@@ -282,30 +392,9 @@ data/documents/secret/
 data/documents/restricted/
 ```
 
-Các tệp không được commit Git. Tải một tệp qua
-`GET /documents/<zone>/<filename>`; ZTAS xác thực token, Device Key, IP nguồn
-và OPA trước khi trả nội dung. Ví dụ: `/documents/internal/ke-hoach.pdf`.
-Không dùng tên tệp bắt đầu bằng dấu chấm, chứa thư mục con hoặc lớn hơn 25 MB.
-Quyền của mỗi phân vùng dùng policy cùng cấp trong `policies/resources.json`.
-Admin cũng có thể chọn **Tải tài liệu lên** ngay trên Dashboard, chọn phân vùng
-rồi nạp tệp; chọn lại cùng tên sẽ thay thế tệp cũ trong chính phân vùng đó.
+## Tài liệu chi tiết
 
-## Audit log tập trung và retention
-
-- Audit log hoạt động được giữ **5 ngày lịch** trong `data/logs/`. Khi ZTAS
-  khởi động hoặc ghi sự kiện mới, log cũ hơn 5 ngày sẽ tự xóa.
-- Trên trang **Nhật ký**, chọn ngày rồi dùng **Lưu riêng / tải**. Hệ thống tạo
-  snapshot JSONL tại `data/saved-logs/` và tải một bản JSON về máy; snapshot
-  này không bị retention tự động xóa.
-- Để audit xuyên suốt Windows, macOS và Linux, chỉ chạy **một ZTAS server trung
-  tâm** và cấu hình mọi VM/container/client dùng cùng `ZTAS_URL`. Server này là
-  nơi duy nhất ghi audit, nên log không bị chia thành từng máy build.
-- Có thể đưa log của server trung tâm lên volume bền vững bằng biến môi trường
-  `AUDIT_LOG_DIRECTORY`. Ví dụ đặt `AUDIT_LOG_DIRECTORY=/mnt/ztas-audit/logs`
-  trên Linux/macOS hoặc `AUDIT_LOG_DIRECTORY=E:\ZTAS_Audit\logs` trên Windows
-  trong `runtime/ztas.env`. Không chạy nhiều instance ZTAS cùng ghi vào một thư
-  mục mạng; hãy để một instance trung tâm ghi log.
-
-Xem [kết nối thiết bị bằng Account Key](docs/account-key-device-connection.md),
-[hướng dẫn cấp phát thiết bị cũ](docs/device-enrollment.md) và
-[kết nối từ VM/Docker](docs/vmware-docker-device-access.md).
+- [Quy trình HTTPS đa nền tảng](docs/QUY_TRINH_HTTPS_DA_NEN_TANG.md)
+- [Kết nối thiết bị bằng Account Key](docs/account-key-device-connection.md)
+- [Cấp phát và khôi phục thiết bị](docs/device-enrollment.md)
+- [Kết nối VMware/Docker](docs/vmware-docker-device-access.md)

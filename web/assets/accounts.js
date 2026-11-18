@@ -32,6 +32,34 @@ function rolePermissionShort(role) {
   return ({ guest: "Cấp 1", employee: "Cấp 1–2", manager: "Cấp 1–3", engineer: "Cấp 1–4", business_admin: "Cấp 1–5 theo phạm vi", admin: "Cấp 1–2 kỹ thuật" })[role] ?? "Theo policy";
 }
 
+function organizationLabel(organizationUnit) {
+  return ({ "unit-a": "Đơn vị A", "unit-b": "Đơn vị B", "it-ops": "Khối kỹ thuật" })[organizationUnit] ?? organizationUnit;
+}
+
+function taskScopeLabel(tasks) {
+  if ((tasks ?? []).includes("*")) return "Toàn bộ tài liệu trong phạm vi được ủy quyền";
+  const labels = [];
+  for (const task of tasks ?? []) {
+    if (task === "public") labels.push("Tài liệu công khai");
+    else if (task.startsWith("internal-")) labels.push("Tài liệu nội bộ");
+    else if (task.startsWith("sensitive-")) labels.push("Tài liệu mật / nhạy cảm");
+    else if (task.startsWith("secret-")) labels.push("Tài liệu bí mật");
+    else if (task.startsWith("restricted-")) labels.push("Tài liệu hạn chế đặc biệt");
+  }
+  return [...new Set(labels)].join(", ") || "Quyền tự động theo vai trò";
+}
+
+function tasksForScope(scope, organizationUnit) {
+  if (scope === "auto") return [];
+  const suffix = organizationUnit.startsWith("unit-") ? organizationUnit.slice(5) : organizationUnit;
+  const tasks = ["public"];
+  if (["internal", "sensitive", "secret", "restricted"].includes(scope)) tasks.push(`internal-${suffix}`);
+  if (["sensitive", "secret", "restricted"].includes(scope)) tasks.push(`sensitive-${suffix}`);
+  if (["secret", "restricted"].includes(scope)) tasks.push(`secret-${suffix}`);
+  if (scope === "restricted") tasks.push(`restricted-${suffix}`);
+  return tasks;
+}
+
 function apiHeaders(json = false) {
   const headers = json ? { "Content-Type": "application/json" } : {};
   if (adminToken) headers.Authorization = `Bearer ${adminToken}`;
@@ -61,7 +89,8 @@ function renderUsers(users) {
     const session = user.temporary_session_minutes > 0 ? `Tạm thời ${user.temporary_session_minutes} phút` : "Không giới hạn theo thời gian";
     const isCurrent = user.username === currentUser;
     const hasGlobalScope = devices.includes("*");
-    const scope = `${user.organization_unit || "unit-a"} · ${(user.assigned_tasks ?? []).join(", ") || "không có nhiệm vụ đọc"}`;
+    const taskText = user.task_description || taskScopeLabel(user.assigned_tasks);
+    const scope = `${organizationLabel(user.organization_unit || "unit-a")} · ${taskText}`;
     return `<tr><td><strong>${escapeHtml(user.username)}</strong><small class="account-scope">${escapeHtml(scope)}</small></td><td><span class="role-badge role-badge--${escapeHtml(user.role)}">${escapeHtml(roleLabel(user.role))}</span></td><td class="account-table__permission">${escapeHtml(rolePermissionShort(user.role))}</td><td class="account-table__devices">${escapeHtml(devicesText)}</td><td>${escapeHtml(session)}</td><td class="account-table__actions"><div class="account-action-group">${hasGlobalScope ? '<span class="account-self">Phạm vi toàn hệ thống</span>' : `<button class="button button--secondary button--small" data-assign-user="${escapeHtml(user.username)}">Gán thiết bị</button>`}<button class="button button--secondary button--small" data-issue-account-key="${escapeHtml(user.username)}">Cấp lại key</button>${isCurrent ? '<span class="account-self">Phiên hiện tại</span>' : `<button class="button button--danger-outline button--small" data-delete-user="${escapeHtml(user.username)}">Xóa</button>`}</div></td></tr>`;
   }).join("")}</tbody></table>`;
 
@@ -175,8 +204,17 @@ document.querySelector("#create-user-form").addEventListener("submit", async eve
   const message = document.querySelector("#create-user-message");
   message.textContent = "Đang tạo tài khoản…";
   try {
-    const tasks = form.elements.assigned_tasks.value.split(",").map(value => value.trim()).filter(Boolean);
-    const response = await fetch("/api/users", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ username: form.elements.username.value.trim(), role: form.elements.role.value, organization_unit: form.elements.organization_unit.value, assigned_tasks: tasks }) });
+    const usernameField = form.querySelector('[name="username"]');
+    const roleField = form.querySelector('[name="role"]');
+    const organizationField = form.querySelector('[name="organization_unit"]');
+    const scopeField = form.querySelector('[name="document_scope"]');
+    const descriptionField = form.querySelector('[name="task_description"]');
+    if (!usernameField || !roleField || !organizationField || !scopeField || !descriptionField) {
+      throw new Error("Giao diện tạo tài khoản chưa được cập nhật đầy đủ. Hãy tải lại trang rồi thử lại.");
+    }
+    const organizationUnit = organizationField.value;
+    const tasks = tasksForScope(scopeField.value, organizationUnit);
+    const response = await fetch("/api/users", { method: "POST", headers: apiHeaders(true), body: JSON.stringify({ username: usernameField.value.trim(), role: roleField.value, organization_unit: organizationUnit, assigned_tasks: tasks, task_description: descriptionField.value.trim() }) });
     const data = await parseResponse(response);
     closeDialog("create-user-dialog");
     await refreshUsers();

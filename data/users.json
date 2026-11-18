@@ -15,24 +15,6 @@
       "username": "admin"
     },
     {
-      "account_key_hash": "pbkdf2_sha256$200000$6ad1da0b46d96cdd9047ce8fecb65280$58ad41bfd56da58c8c9ebc3d0950dccdce1cdd81cd5cb96c807acc7b14414b12",
-      "account_key_issued_at": 1794729551,
-      "allowed_device_ids": [
-        "web-9f5c9af228454bb0bb381280"
-      ],
-      "assigned_tasks": [
-        "public",
-        "internal-a",
-        "sensitive-a",
-        "secret-a"
-      ],
-      "expires_at": 0,
-      "organization_unit": "unit-a",
-      "password_hash": "pbkdf2_sha256$200000$932f79f264bc8ac847c9afd25a66d5ee$dc601cad9ccd38c53346acf09ee08e556b2aa3ef2193d27851209bce07f51149",
-      "role": "engineer",
-      "username": "ubuntu1"
-    },
-    {
       "account_key_hash": "pbkdf2_sha256$200000$ef84255e0510b58f586b9a43c76e1e51$88fe799ded03c3de20d6e19992b0c876d751fad4342b147c0346ad3902dd6983",
       "account_key_issued_at": 1794750335,
       "allowed_device_ids": [],
@@ -63,6 +45,22 @@
       "password_hash": "pbkdf2_sha256$200000$9a46ff7ac8106297b8b46970b4df887c$b5a77f336084341b1fcd7bcdcbba2cfbdbf789ed2d321270b0ea352230559dd8",
       "role": "manager",
       "username": "windows1"
+    },
+    {
+      "account_key_hash": "pbkdf2_sha256$200000$03d73ac8b6543d0b031efeb7a2c37588$76cba706663f104100d0ee181bcc6a03328e61af29b38a2fd8ffb7565c094e6f",
+      "account_key_issued_at": 1794995194,
+      "allowed_device_ids": [
+        "web-9f5c9af228454bb0bb381280"
+      ],
+      "assigned_tasks": [
+        "public"
+      ],
+      "expires_at": 0,
+      "organization_unit": "unit-a",
+      "password_hash": "pbkdf2_sha256$200000$f8c25483ee9edb156d86b294364122a7$c7c5930a3e7cbf8101d17cf6dd30b671f1bb9bd50739ff90c85d78730c853b91",
+      "role": "employee",
+      "task_description": "Quản lý văn bản công khai đơn vị A",
+      "username": "ubuntu1"
     }
   ]
 }

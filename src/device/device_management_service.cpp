@@ -461,6 +461,61 @@ DeviceOperationResult DeviceManagementService::update_allowed_ip(
     }
 }
 
+DeviceOperationResult DeviceManagementService::update_security_context(
+    const std::string& device_id,
+    int trust_level,
+    const std::string& location_id
+) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    if (!valid_device_id(device_id)) {
+        return failure("INVALID_DEVICE_ID", "Device ID khong hop le");
+    }
+    if (trust_level < 1 || trust_level > 5) {
+        return failure("INVALID_TRUST_LEVEL", "Muc tin cay phai nam trong khoang 1-5");
+    }
+
+    try {
+        json devices_policy = read_json(devices_policy_file_);
+        const json locations_policy = read_json(locations_policy_file_);
+        if (!locations_policy.contains("locations") ||
+            !locations_policy.at("locations").contains(location_id)) {
+            return failure("INVALID_LOCATION", "Vung mang khong ton tai trong policy");
+        }
+        if (!devices_policy.contains("devices") ||
+            !devices_policy.at("devices").contains(device_id)) {
+            return failure("DEVICE_NOT_FOUND", "Khong tim thay thiet bi trong policy");
+        }
+
+        json& device = devices_policy["devices"][device_id];
+        if (!device.value("registered", false) ||
+            device.value("lifecycle_status", "") != "ACTIVE") {
+            return failure("DEVICE_NOT_ACTIVE", "Chi co the doi quyen cho thiet bi dang hoat dong");
+        }
+
+        device["trust_level"] = trust_level;
+        device["location_id"] = location_id;
+        // Thiet bi da duoc admin tuy chinh, khong con la profile mac dinh.
+        device["enrollment_profile"] = "manual";
+        write_json(devices_policy_file_, devices_policy);
+
+        return {
+            true,
+            "DEVICE_SECURITY_CONTEXT_UPDATED",
+            "Da cap nhat muc tin cay va vung mang cho thiet bi",
+            device_id,
+            "",
+            trust_level,
+            location_id,
+            device.value("device_name", device_id),
+            device.value("device_type", "unknown"),
+            "manual"
+        };
+    } catch (const std::exception& error) {
+        return failure("DEVICE_SECURITY_CONTEXT_UPDATE_ERROR", error.what());
+    }
+}
+
 DeviceOperationResult DeviceManagementService::recover_browser_proof(
     const std::string& device_id,
     const std::string& browser_device_proof

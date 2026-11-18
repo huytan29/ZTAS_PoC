@@ -51,6 +51,14 @@ public:
         const std::string& allowed_ip_address
     ) const;
 
+    // Admin thay doi muc tin cay va vung mang cua thiet bi dang hoat dong.
+    // Thay doi nay la policy thu cong, khong cap lai Device Key.
+    DeviceOperationResult update_security_context(
+        const std::string& device_id,
+        int trust_level,
+        const std::string& location_id
+    ) const;
+
     // Khoi phuc bang chung trinh duyet cho THIET BI DANG HOAT DONG. Khong tao
     // Device ID moi, khong doi Device Key, khong thay doi trust/policy hay
     // lien ket tai khoan. Nguoi goi phai xac minh tai khoan da duoc gan voi

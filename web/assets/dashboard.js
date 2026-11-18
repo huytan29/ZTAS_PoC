@@ -24,6 +24,13 @@ const enrollmentProfiles = {
   trusted: { trust: 4, location: "campus-network" },
   secure: { trust: 5, location: "secure-zone" }
 };
+const networkZones = {
+  "external-network": { level: 0, label: "Mạng bên ngoài" },
+  "vpn-network": { level: 1, label: "Mạng VPN" },
+  "lab-network": { level: 2, label: "Mạng phòng Lab" },
+  "campus-network": { level: 3, label: "Mạng nội bộ cơ quan" },
+  "secure-zone": { level: 4, label: "Vùng bảo mật cao" }
+};
 let adminToken = sessionStorage.getItem("ztas_admin_token") ?? "";
 let pendingAdminAction = null;
 let deviceToRevoke = null;
@@ -35,6 +42,8 @@ let deviceViewSignature = "";
 let deviceTableScrollLeft = 0;
 let deviceTableInteractionUntil = 0;
 let selectedMfaChallengeId = "";
+let managedDevices = [];
+let deviceBeingManaged = null;
 
 const weatherArt = {
   clear: '<svg class="weather-graphic weather-graphic--clear" viewBox="0 0 48 48" role="img"><circle class="weather-sun" cx="24" cy="24" r="10" fill="#f6b73c"/><g class="weather-rays" stroke="#f6b73c" stroke-width="3" stroke-linecap="round"><path d="M24 4v5M24 39v5M4 24h5M39 24h5M10 10l4 4M34 34l4 4M38 10l-4 4M14 34l-4 4"/></g></svg>',
@@ -47,6 +56,11 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, character => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;"
   })[character]);
+}
+
+function networkZoneLabel(locationId) {
+  const zone = networkZones[locationId];
+  return zone ? `Vùng ${zone.level} · ${zone.label}` : locationId;
 }
 
 function formatTime(seconds) {
@@ -203,13 +217,13 @@ function renderDeviceCards(devices) {
         <tr>
           <td data-label="Thiết bị" class="device-table__device"><i class="status-dot status-dot--${dotClass}"></i><strong>${escapeHtml(device.device_name || device.id)}</strong><span class="device-table__id">${escapeHtml(device.id)} · ${escapeHtml(device.device_type || "unknown")}</span></td>
           <td data-label="Trạng thái Zero Trust"><span class="device-status device-status--${info.cardClass}">${info.label}</span></td>
-          <td data-label="Vùng mạng"><span class="device-zone">${escapeHtml(device.location_id)}</span></td>
+          <td data-label="Vùng mạng"><span class="device-zone" title="${escapeHtml(device.location_id)}">${escapeHtml(networkZoneLabel(device.location_id))}</span></td>
           <td data-label="Độ tin cậy"><span class="trust-value">${escapeHtml(device.trust_level)}/5</span></td>
           <td data-label="Tài khoản được gán" class="device-table__accounts">${assignedAccounts(device)}</td>
           <td data-label="Hoạt động gần nhất" class="device-table__activity"><strong>${lastActivity(device)}</strong><span>${formatTime(device.last_seen)}</span></td>
           <td data-label="Thao tác" class="device-table__actions">
             ${device.registered
-              ? `<button class="button button--secondary button--small" data-update-device-ip="${escapeHtml(device.id)}">Cập nhật IP</button><button class="button button--secondary button--small" data-revoke-device="${escapeHtml(device.id)}">Thu hồi</button><button class="button button--danger-outline button--small" data-block-device="${escapeHtml(device.id)}">Chặn</button>`
+              ? `<button class="button button--secondary button--small" data-manage-device="${escapeHtml(device.id)}">Quản trị quyền</button><button class="button button--secondary button--small" data-update-device-ip="${escapeHtml(device.id)}">Cập nhật IP</button><button class="button button--secondary button--small" data-revoke-device="${escapeHtml(device.id)}">Thu hồi</button><button class="button button--danger-outline button--small" data-block-device="${escapeHtml(device.id)}">Chặn</button>`
               : `<button class="button button--secondary button--small" data-reenroll-device="${escapeHtml(device.id)}">Đăng ký lại</button>`}
             <button class="button button--danger-outline button--small" data-delete-device="${escapeHtml(device.id)}">Xoá</button>
           </td>
@@ -254,6 +268,12 @@ function renderDeviceCards(devices) {
   container.querySelectorAll("[data-update-device-ip]").forEach(button => {
     button.addEventListener("click", () => {
       requireAdmin(() => updateDeviceIp(button.dataset.updateDeviceIp));
+    });
+  });
+
+  container.querySelectorAll("[data-manage-device]").forEach(button => {
+    button.addEventListener("click", () => {
+      requireAdmin(() => openDeviceAccessDialog(button.dataset.manageDevice));
     });
   });
 
@@ -312,7 +332,7 @@ function renderConnectionRequests(requests) {
         <tr>
           <td><strong>${escapeHtml(request.device_name || request.device_id)}</strong><span class="request-state"><i class="status-dot status-dot--warning"></i>${request.enrollment_profile === "account-password-recovery" ? "Khôi phục thiết bị cũ · tài khoản/mật khẩu hợp lệ" : request.enrollment_profile === "account-key" ? "Tài khoản + Account Key hợp lệ · chờ duyệt" : request.enrollment_verified ? "Thông tin đăng ký hợp lệ · chờ duyệt" : "Chờ phân loại"}</span><span class="request-id">${escapeHtml(request.device_id)} · ${escapeHtml(request.device_type || "unknown")}</span></td>
           <td><strong>${escapeHtml(request.enrollment_profile || "manual")}</strong><span class="request-account">${escapeHtml(request.requested_username || "Chưa gán tài khoản")}</span></td>
-          <td><span class="device-zone">${escapeHtml(request.location_id)}</span></td>
+          <td><span class="device-zone" title="${escapeHtml(request.location_id)}">${escapeHtml(networkZoneLabel(request.location_id))}</span></td>
           <td><span class="device-zone">${escapeHtml(request.source_ip)}</span></td>
           <td class="request-time"><strong>${formatTime(request.first_seen)}</strong><span>Cập nhật: ${formatTime(request.last_seen)}</span></td>
           <td class="request-agent" title="${escapeHtml(request.user_agent)}">${escapeHtml(request.user_agent)}</td>
@@ -423,6 +443,7 @@ function renderMfaRequests(requests, lockedDevices = []) {
 
 function renderDashboard(data) {
   const { summary, devices } = data;
+  managedDevices = devices;
 
   updateText("#total-devices", summary.total);
   updateText("#identified-devices", summary.identified);
@@ -469,8 +490,10 @@ async function refreshDashboard() {
     const data = await response.json();
     renderDashboard(data);
     setConnection(true);
+    return data;
   } catch {
     setConnection(false);
+    return null;
   }
 }
 
@@ -717,6 +740,111 @@ async function updateDeviceIp(deviceId) {
   }
 }
 
+function renderDeviceAccessAccounts() {
+  if (!deviceBeingManaged) return;
+  const list = document.querySelector("#device-access-account-list");
+  const assigned = deviceBeingManaged.assigned_accounts ?? [];
+  const assignedNames = new Set(assigned.map(account => account.username));
+  list.innerHTML = assigned.length
+    ? assigned.map(account => `<span class="assignment-chip">${escapeHtml(account.username)}<small>${escapeHtml(account.role)}${account.scope === "all" ? " · toàn hệ thống" : ""}</small>${account.scope === "all" ? "" : `<button type="button" data-device-account-remove="${escapeHtml(account.username)}" title="Thu hồi quyền dùng thiết bị">×</button>`}</span>`).join("")
+    : '<span class="assignment-empty">Chưa có tài khoản nào được gán cho thiết bị này.</span>';
+  list.querySelectorAll("[data-device-account-remove]").forEach(button => {
+    button.addEventListener("click", () => removeDeviceAccount(button.dataset.deviceAccountRemove));
+  });
+
+  const selector = document.querySelector("#device-access-account-select");
+  const available = assignableUsers.filter(user => !assignedNames.has(user.username));
+  selector.innerHTML = [
+    '<option value="">Chọn tài khoản cần cấp quyền</option>',
+    ...available.map(user => `<option value="${escapeHtml(user.username)}">${escapeHtml(user.username)} — ${escapeHtml(user.role)}</option>`)
+  ].join("");
+  document.querySelector("#device-access-grant-button").disabled = !available.length;
+}
+
+async function refreshManagedDevice() {
+  await refreshDashboard();
+  deviceBeingManaged = managedDevices.find(device => device.id === deviceBeingManaged?.id) ?? null;
+  if (!deviceBeingManaged) {
+    closeDialog("device-access-dialog");
+    return;
+  }
+  renderDeviceAccessAccounts();
+}
+
+async function openDeviceAccessDialog(deviceId) {
+  deviceBeingManaged = managedDevices.find(device => device.id === deviceId) ?? null;
+  if (!deviceBeingManaged) {
+    alert("Không tìm thấy thiết bị cần quản trị. Hãy tải lại Dashboard.");
+    return;
+  }
+  const form = document.querySelector("#device-access-form");
+  form.elements.trust_level.value = String(deviceBeingManaged.trust_level);
+  form.elements.location_id.value = deviceBeingManaged.location_id;
+  document.querySelector("#device-access-device-label").textContent =
+    `${deviceBeingManaged.device_name || deviceBeingManaged.id} · ${deviceBeingManaged.id}`;
+  document.querySelector("#device-access-message").textContent = "";
+  await loadAssignableUsers(document.querySelector("#device-access-account-select"));
+  renderDeviceAccessAccounts();
+  showDialog("device-access-dialog");
+}
+
+async function grantDeviceAccount() {
+  if (!deviceBeingManaged) return;
+  const selector = document.querySelector("#device-access-account-select");
+  const username = selector.value;
+  if (!username) return;
+  const message = document.querySelector("#device-access-message");
+  message.textContent = "Đang cấp quyền tài khoản…";
+  try {
+    const response = await fetch("/api/user-device-assignments", {
+      method: "POST", headers: apiHeaders(),
+      body: JSON.stringify({ username, device_id: deviceBeingManaged.id })
+    });
+    const data = await parseResponse(response);
+    message.textContent = data.message;
+    await refreshManagedDevice();
+  } catch (error) {
+    message.textContent = error.message;
+  }
+}
+
+async function removeDeviceAccount(username) {
+  if (!deviceBeingManaged || !window.confirm(`Thu hồi quyền dùng thiết bị của ${username}?`)) return;
+  const message = document.querySelector("#device-access-message");
+  message.textContent = "Đang thu hồi quyền tài khoản…";
+  try {
+    const response = await fetch(`/api/user-device-assignments?username=${encodeURIComponent(username)}&device_id=${encodeURIComponent(deviceBeingManaged.id)}`, {
+      method: "DELETE", headers: apiHeaders()
+    });
+    const data = await parseResponse(response);
+    message.textContent = data.message;
+    await refreshManagedDevice();
+  } catch (error) {
+    message.textContent = error.message;
+  }
+}
+
+async function saveDeviceSecurityContext(form) {
+  if (!deviceBeingManaged) return;
+  const message = document.querySelector("#device-access-message");
+  message.textContent = "Đang cập nhật Trust và vùng mạng…";
+  try {
+    const response = await fetch("/api/devices/security-context", {
+      method: "PUT", headers: apiHeaders(),
+      body: JSON.stringify({
+        device_id: deviceBeingManaged.id,
+        trust_level: Number(form.elements.trust_level.value),
+        location_id: form.elements.location_id.value
+      })
+    });
+    const data = await parseResponse(response);
+    message.textContent = `${data.message}. Policy đã được đồng bộ.`;
+    await refreshManagedDevice();
+  } catch (error) {
+    message.textContent = error.message;
+  }
+}
+
 async function parseResponse(response) {
   const body = await response.json().catch(() => ({}));
 
@@ -733,6 +861,15 @@ async function parseResponse(response) {
 
 document.querySelector("#add-device-button").addEventListener("click", () => {
   requireAdmin(() => openEnrollDialog());
+});
+
+document.querySelector("#device-access-grant-button").addEventListener("click", () => {
+  grantDeviceAccount();
+});
+
+document.querySelector("#device-access-form").addEventListener("submit", event => {
+  event.preventDefault();
+  saveDeviceSecurityContext(event.currentTarget);
 });
 
 document.querySelector("#mfa-admin-login-button").addEventListener("click", () => {
