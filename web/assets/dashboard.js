@@ -44,12 +44,17 @@ let deviceTableInteractionUntil = 0;
 let selectedMfaChallengeId = "";
 let managedDevices = [];
 let deviceBeingManaged = null;
+let managedDeviceInventory = [];
 
 const weatherArt = {
   clear: '<svg class="weather-graphic weather-graphic--clear" viewBox="0 0 48 48" role="img"><circle class="weather-sun" cx="24" cy="24" r="10" fill="#f6b73c"/><g class="weather-rays" stroke="#f6b73c" stroke-width="3" stroke-linecap="round"><path d="M24 4v5M24 39v5M4 24h5M39 24h5M10 10l4 4M34 34l4 4M38 10l-4 4M14 34l-4 4"/></g></svg>',
-  cloudy: '<svg class="weather-graphic weather-graphic--cloudy" viewBox="0 0 48 48" role="img"><circle class="weather-cloud-sun" cx="18" cy="16" r="7" fill="#f6c453"/><path class="weather-cloud" d="M14 37h23a8 8 0 0 0 0-16 11 11 0 0 0-21-2 9 9 0 0 0-2 18Z" fill="#9eafc4"/></svg>',
+  partly: '<svg class="weather-graphic weather-graphic--partly" viewBox="0 0 48 48" role="img"><circle class="weather-cloud-sun" cx="18" cy="16" r="7" fill="#f6c453"/><path class="weather-cloud" d="M14 37h23a8 8 0 0 0 0-16 11 11 0 0 0-21-2 9 9 0 0 0-2 18Z" fill="#9eafc4"/></svg>',
   rain: '<svg class="weather-graphic weather-graphic--rain" viewBox="0 0 48 48" role="img"><path class="weather-cloud" d="M10 29h27a8 8 0 0 0 0-16 11 11 0 0 0-21-2 9 9 0 0 0-6 18Z" fill="#879db7"/><g class="weather-rain" stroke="#4b8fe2" stroke-width="3" stroke-linecap="round"><path d="m16 34-2 6m10-6-2 6m10-6-2 6"/></g></svg>',
-  calm: '<svg class="weather-graphic weather-graphic--calm" viewBox="0 0 48 48" role="img"><path class="weather-cloud" d="M10 30h27a8 8 0 0 0 0-16 11 11 0 0 0-21-2 9 9 0 0 0-6 18Z" fill="#a9b6c6"/><path class="weather-breeze" d="M12 38h17m-10 4h17" stroke="#8696a9" stroke-width="2.5" stroke-linecap="round"/></svg>'
+  overcast: '<svg class="weather-graphic weather-graphic--overcast" viewBox="0 0 48 48" role="img"><path class="weather-cloud" d="M10 30h27a8 8 0 0 0 0-16 11 11 0 0 0-21-2 9 9 0 0 0-6 18Z" fill="#a9b6c6"/><path class="weather-breeze" d="M12 38h17m-10 4h17" stroke="#8696a9" stroke-width="2.5" stroke-linecap="round"/></svg>',
+  fog: '<svg class="weather-graphic weather-graphic--fog" viewBox="0 0 48 48" role="img"><path class="weather-cloud" d="M10 30h27a8 8 0 0 0 0-16 11 11 0 0 0-21-2 9 9 0 0 0-6 18Z" fill="#a9b6c6"/><path class="weather-breeze" d="M12 38h17m-10 4h17" stroke="#7287a0" stroke-width="2.5" stroke-linecap="round"/></svg>',
+  drizzle: '<svg class="weather-graphic weather-graphic--drizzle" viewBox="0 0 48 48" role="img"><path class="weather-cloud" d="M10 29h27a8 8 0 0 0 0-16 11 11 0 0 0-21-2 9 9 0 0 0-6 18Z" fill="#9eafc4"/><g class="weather-rain" stroke="#6aa5e8" stroke-width="2" stroke-linecap="round"><path d="m16 34-1 5m9-5-1 5m9-5-1 5m9-5-1 5"/></g></svg>',
+  storm: '<svg class="weather-graphic weather-graphic--storm" viewBox="0 0 48 48" role="img"><path class="weather-cloud" d="M10 29h27a8 8 0 0 0 0-16 11 11 0 0 0-21-2 9 9 0 0 0-6 18Z" fill="#657891"/><path class="weather-lightning" d="m28 29-7 10h6l-2 7 9-12h-6l3-5Z" fill="#f5c847"/></svg>',
+  snow: '<svg class="weather-graphic weather-graphic--snow" viewBox="0 0 48 48" role="img"><path class="weather-cloud" d="M10 29h27a8 8 0 0 0 0-16 11 11 0 0 0-21-2 9 9 0 0 0-6 18Z" fill="#9eafc4"/><g class="weather-snowflakes" fill="#dcecff"><circle cx="16" cy="40" r="2"/><circle cx="25" cy="43" r="2"/><circle cx="34" cy="40" r="2"/></g></svg>'
 };
 
 function escapeHtml(value) {
@@ -95,13 +100,40 @@ function updateText(id, value) {
 }
 
 function weatherDescriptor(code) {
-  if (code === 0) return { label: "Trời nắng", art: "clear" };
-  if ([1, 2, 3].includes(code)) return { label: "Trời râm", art: "cloudy" };
-  if ([45, 48].includes(code)) return { label: "Sương mù", art: "calm" };
-  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82) || code >= 95) {
-    return { label: code >= 95 ? "Mưa dông" : "Trời mưa", art: "rain" };
-  }
-  return { label: "Thời tiết bình thường", art: "calm" };
+  // WMO Weather interpretation codes (Open-Meteo). Nhan va hinh minh hoa
+  // phan biet tung hien tuong, khong gom chung thanh "nang/mua/ram".
+  const descriptors = {
+    0: ["Quang đãng", "clear"],
+    1: ["Chủ yếu quang đãng", "partly"],
+    2: ["Có mây từng phần", "partly"],
+    3: ["Âm u", "overcast"],
+    45: ["Sương mù", "fog"],
+    48: ["Sương mù đóng băng", "fog"],
+    51: ["Mưa phùn nhẹ", "drizzle"],
+    53: ["Mưa phùn vừa", "drizzle"],
+    55: ["Mưa phùn dày hạt", "drizzle"],
+    56: ["Mưa phùn đóng băng nhẹ", "drizzle"],
+    57: ["Mưa phùn đóng băng dày", "drizzle"],
+    61: ["Mưa nhẹ", "rain"],
+    63: ["Mưa vừa", "rain"],
+    65: ["Mưa to", "rain"],
+    66: ["Mưa đóng băng nhẹ", "rain"],
+    67: ["Mưa đóng băng to", "rain"],
+    71: ["Tuyết nhẹ", "snow"],
+    73: ["Tuyết vừa", "snow"],
+    75: ["Tuyết dày", "snow"],
+    77: ["Hạt tuyết", "snow"],
+    80: ["Mưa rào nhẹ", "rain"],
+    81: ["Mưa rào vừa", "rain"],
+    82: ["Mưa rào mạnh", "rain"],
+    85: ["Mưa tuyết nhẹ", "snow"],
+    86: ["Mưa tuyết mạnh", "snow"],
+    95: ["Dông", "storm"],
+    96: ["Dông kèm mưa đá nhẹ", "storm"],
+    99: ["Dông kèm mưa đá mạnh", "storm"]
+  };
+  const [label, art] = descriptors[code] ?? ["Chưa xác định", "overcast"];
+  return { label, art, code };
 }
 
 function updateLocalDateTime() {
@@ -113,7 +145,7 @@ function updateLocalDateTime() {
   }));
   updateText("#local-time-zone", `Vùng giờ: ${zone}`);
   if (!document.querySelector("#weather-illustration").innerHTML) {
-    document.querySelector("#weather-illustration").innerHTML = weatherArt.calm;
+    document.querySelector("#weather-illustration").innerHTML = weatherArt.overcast;
   }
 }
 
@@ -155,6 +187,7 @@ async function loadWeatherForCurrentPosition() {
       const descriptor = weatherDescriptor(weather.weather_code);
       document.querySelector("#weather-illustration").innerHTML = weatherArt[descriptor.art];
       condition.textContent = `${descriptor.label} · ${Math.round(weather.temperature_2m)}°C`;
+      condition.title = `Mã thời tiết WMO: ${descriptor.code}`;
       let geographicAddress = "Khu vực hiện tại";
       if (addressResponse?.ok) {
         const addressData = await addressResponse.json();
@@ -294,6 +327,94 @@ function renderDeviceCards(devices) {
       requireAdmin(() => blockDevice(button.dataset.blockDevice));
     });
   });
+}
+
+function deviceLifecycleLabel(device) {
+  if (device.lifecycle_status === "BLOCKED") return "Đã chặn";
+  if (device.lifecycle_status === "REVOKED") return "Đã thu hồi";
+  if (device.registered) return "Đang hoạt động";
+  return "Chưa cấp phát";
+}
+
+function renderDeviceInventory(devices) {
+  const container = document.querySelector("#device-inventory-list");
+  const refreshButton = document.querySelector("#inventory-refresh-button");
+  const loginButton = document.querySelector("#inventory-admin-login-button");
+  refreshButton.hidden = !adminToken;
+  loginButton.hidden = Boolean(adminToken);
+
+  if (!adminToken) {
+    container.innerHTML = '<p class="empty-state">Đăng nhập quản trị để xem kho thiết bị.</p>';
+    return;
+  }
+  if (!devices.length) {
+    container.innerHTML = '<p class="empty-state">Kho thiết bị chưa có bản ghi nào.</p>';
+    return;
+  }
+
+  const rows = devices.slice().sort((left, right) =>
+    String(left.device_name || left.id).localeCompare(String(right.device_name || right.id), "vi")
+  ).map(device => {
+    const lifecycle = deviceLifecycleLabel(device);
+    const lifecycleClass = device.registered ? "identified" : "unidentified";
+    const deviceAccount = (device.assigned_accounts ?? []).find(account => account.scope === "device");
+    return `<tr>
+      <td data-label="Thiết bị" class="device-table__device"><strong>${escapeHtml(device.device_name || device.id)}</strong><span class="device-table__id">${escapeHtml(device.id)} · ${escapeHtml(device.device_type || "unknown")}</span></td>
+      <td data-label="Vòng đời"><span class="device-status device-status--${lifecycleClass}">${escapeHtml(lifecycle)}</span></td>
+      <td data-label="Trust / vùng mạng"><span class="trust-value">${escapeHtml(device.trust_level)}/5</span><span class="device-zone" title="${escapeHtml(device.location_id)}">${escapeHtml(networkZoneLabel(device.location_id))}</span></td>
+      <td data-label="Tài khoản được gán" class="device-table__accounts">${assignedAccounts(device)}</td>
+      <td data-label="Hoạt động gần nhất" class="device-table__activity"><strong>${lastActivity(device)}</strong><span>${formatTime(device.last_seen)}</span></td>
+      <td data-label="Thao tác" class="device-table__actions">${device.registered
+        ? `<button class="button button--secondary button--small" data-inventory-manage="${escapeHtml(device.id)}">Xác định / gán</button><button class="button button--secondary button--small" data-reissue-device-key="${escapeHtml(device.id)}">Cấp lại Device Key</button>`
+        : `<button class="button button--secondary button--small" data-inventory-reenroll="${escapeHtml(device.id)}" data-inventory-user="${escapeHtml(deviceAccount?.username || "")}">Đăng ký lại</button>`}
+        <button class="button button--danger-outline button--small" data-inventory-delete="${escapeHtml(device.id)}">Xóa thiết bị</button></td>
+    </tr>`;
+  }).join("");
+
+  container.innerHTML = `<div class="device-table-wrap"><table class="device-table"><thead><tr><th>Thiết bị</th><th>Vòng đời</th><th>Trust / vùng mạng</th><th>Tài khoản được gán</th><th>Hoạt động gần nhất</th><th>Thao tác</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  container.querySelectorAll("[data-inventory-manage]").forEach(button => {
+    button.addEventListener("click", () => openDeviceAccessDialog(button.dataset.inventoryManage));
+  });
+  container.querySelectorAll("[data-reissue-device-key]").forEach(button => {
+    button.addEventListener("click", () => reissueDeviceKey(button.dataset.reissueDeviceKey));
+  });
+  container.querySelectorAll("[data-inventory-reenroll]").forEach(button => {
+    button.addEventListener("click", () => {
+      const device = managedDeviceInventory.find(item => item.id === button.dataset.inventoryReenroll);
+      if (!device) return;
+      openEnrollDialog(
+        device.id,
+        device.location_id,
+        device.enrollment_profile,
+        button.dataset.inventoryUser,
+        device.device_name,
+        device.device_type,
+        "",
+        device.trust_level
+      );
+    });
+  });
+  container.querySelectorAll("[data-inventory-delete]").forEach(button => {
+    button.addEventListener("click", () => openDeleteDialog(button.dataset.inventoryDelete));
+  });
+}
+
+async function refreshDeviceInventory() {
+  const container = document.querySelector("#device-inventory-list");
+  if (!adminToken) {
+    renderDeviceInventory([]);
+    return;
+  }
+  try {
+    const response = await fetch("/api/device-inventory", {
+      headers: apiHeaders(), cache: "no-store"
+    });
+    const data = await parseResponse(response);
+    managedDeviceInventory = data.devices ?? [];
+    renderDeviceInventory(managedDeviceInventory);
+  } catch (error) {
+    container.innerHTML = `<p class="empty-state">Không thể tải kho thiết bị: ${escapeHtml(error.message)}</p>`;
+  }
 }
 
 function updateDonut(summary) {
@@ -664,7 +785,8 @@ async function openEnrollDialog(
   assignedUsername = "",
   deviceName = "",
   deviceType = "unknown",
-  allowedIpAddress = ""
+  allowedIpAddress = "",
+  trustLevel = null
 ) {
   const form = document.querySelector("#enroll-device-form");
   form.reset();
@@ -676,7 +798,7 @@ async function openEnrollDialog(
   if (enrollmentProfiles[profileId]) {
     applyEnrollmentProfile(form, profileId);
   } else {
-    form.elements.trust_level.value = "3";
+    form.elements.trust_level.value = String(trustLevel ?? 3);
     form.elements.location_id.value = [...form.elements.location_id.options]
       .some(option => option.value === locationId) ? locationId : "lab-network";
   }
@@ -714,7 +836,8 @@ async function blockDevice(deviceId) {
       body: JSON.stringify({ device_id: deviceId })
     });
     await parseResponse(response);
-    refreshDashboard();
+    await refreshDashboard();
+    await refreshDeviceInventory();
   } catch (error) {
     alert(error.message);
   }
@@ -734,7 +857,26 @@ async function updateDeviceIp(deviceId) {
     });
     const data = await parseResponse(response);
     alert(data.message);
-    refreshDashboard();
+    await refreshDashboard();
+    await refreshDeviceInventory();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+async function reissueDeviceKey(deviceId) {
+  if (!window.confirm(`Cấp lại Device Key cho ${deviceId}? Key cũ sẽ mất hiệu lực ngay.`)) return;
+  try {
+    const response = await fetch("/api/devices/device-key", {
+      method: "POST", headers: apiHeaders(),
+      body: JSON.stringify({ device_id: deviceId })
+    });
+    const data = await parseResponse(response);
+    issuedCredential = { ...data.device, device_key: data.device_key };
+    document.querySelector("#issued-device-key").value = data.device_key;
+    showDialog("device-key-dialog");
+    await refreshDashboard();
+    await refreshDeviceInventory();
   } catch (error) {
     alert(error.message);
   }
@@ -763,7 +905,9 @@ function renderDeviceAccessAccounts() {
 
 async function refreshManagedDevice() {
   await refreshDashboard();
-  deviceBeingManaged = managedDevices.find(device => device.id === deviceBeingManaged?.id) ?? null;
+  await refreshDeviceInventory();
+  deviceBeingManaged = managedDevices.find(device => device.id === deviceBeingManaged?.id) ??
+    managedDeviceInventory.find(device => device.id === deviceBeingManaged?.id) ?? null;
   if (!deviceBeingManaged) {
     closeDialog("device-access-dialog");
     return;
@@ -772,7 +916,8 @@ async function refreshManagedDevice() {
 }
 
 async function openDeviceAccessDialog(deviceId) {
-  deviceBeingManaged = managedDevices.find(device => device.id === deviceId) ?? null;
+  deviceBeingManaged = managedDevices.find(device => device.id === deviceId) ??
+    managedDeviceInventory.find(device => device.id === deviceId) ?? null;
   if (!deviceBeingManaged) {
     alert("Không tìm thấy thiết bị cần quản trị. Hãy tải lại Dashboard.");
     return;
@@ -876,6 +1021,14 @@ document.querySelector("#mfa-admin-login-button").addEventListener("click", () =
   requireAdmin(() => refreshMfaRequests());
 });
 
+document.querySelector("#inventory-admin-login-button").addEventListener("click", () => {
+  requireAdmin(() => refreshDeviceInventory());
+});
+
+document.querySelector("#inventory-refresh-button").addEventListener("click", () => {
+  refreshDeviceInventory();
+});
+
 document.querySelector("#weather-location-button").addEventListener("click", () => {
   loadWeatherForCurrentPosition();
 });
@@ -910,6 +1063,7 @@ document.querySelector("#admin-login-form").addEventListener("submit", async eve
     closeDialog("admin-login-dialog");
     refreshMacCaptureSettings();
     refreshMfaRequests();
+    refreshDeviceInventory();
     const action = pendingAdminAction;
     pendingAdminAction = null;
     action?.();
@@ -948,6 +1102,7 @@ document.querySelector("#enroll-device-form").addEventListener("submit", async e
     closeDialog("enroll-device-dialog");
     showDialog("device-key-dialog");
     refreshDashboard();
+    refreshDeviceInventory();
     refreshConnectionRequests();
   } catch (error) {
     message.textContent = error.message;
@@ -1001,6 +1156,7 @@ document.querySelector("#confirm-revoke-device").addEventListener("click", async
     closeDialog("revoke-device-dialog");
     deviceToRevoke = null;
     refreshDashboard();
+    refreshDeviceInventory();
   } catch (error) {
     message.textContent = error.message;
   }
@@ -1020,6 +1176,7 @@ document.querySelector("#confirm-delete-device").addEventListener("click", async
     closeDialog("delete-device-dialog");
     deviceToDelete = null;
     refreshDashboard();
+    refreshDeviceInventory();
   } catch (error) {
     message.textContent = error.message;
   }
@@ -1075,6 +1232,7 @@ document.querySelector("#logout-button").addEventListener("click", async () => {
 });
 
 refreshDashboard();
+refreshDeviceInventory();
 refreshConnectionRequests();
 refreshMfaRequests();
 refreshMacCaptureSettings();

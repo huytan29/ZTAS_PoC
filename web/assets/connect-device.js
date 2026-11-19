@@ -51,9 +51,11 @@ async function waitForApproval() {
     if (response.ok && data.access_token && data.reader_context) {
       sessionStorage.setItem("ztas_document_token", data.access_token);
       sessionStorage.setItem("ztas_document_context", JSON.stringify({
+        ...data.reader_context,
         username: data.subject.username,
         role: data.subject.role,
-        ...data.reader_context
+        organization_unit: data.subject.organization_unit,
+        assigned_tasks: data.subject.assigned_tasks
       }));
       message.textContent = "Thiết bị đã được phê duyệt. Đang mở Tài liệu…";
       location.assign("/documents");
@@ -106,10 +108,12 @@ form.addEventListener("submit", async event => {
     waitingApproval = true;
     waitForApproval();
   } catch (error) {
-    message.textContent = error.message === "INVALID_ACCOUNT_ENROLLMENT_CREDENTIALS"
+    message.textContent = error.code === "INVALID_ACCOUNT_ENROLLMENT_CREDENTIALS"
       ? "Tên đăng nhập, mật khẩu hoặc Account Key không đúng."
-      : error.message === "INVALID_ACCOUNT_PASSWORD"
+      : error.code === "INVALID_ACCOUNT_PASSWORD"
         ? "Tên đăng nhập hoặc mật khẩu không đúng."
+      : error.code === "DEVICE_ACCOUNT_BINDING_REQUIRED"
+        ? "Máy này đã được đăng ký cho tài khoản khác. Admin cần vào Thiết bị → Quản trị quyền → cấp tài khoản này cho đúng thiết bị, rồi chọn “Thiết bị đã cấp” để đăng nhập."
       : error.message;
   } finally {
     submit.disabled = waitingApproval;

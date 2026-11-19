@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="/assets/common.css">
   <link rel="stylesheet" href="/assets/accounts.css">
   <script defer src="/assets/common.js"></script>
-  <script defer src="/assets/accounts.js?v=20261118-1"></script>
+  <script defer src="/assets/accounts.js?v=20261119-3"></script>
 </head>
 <body>
   <header class="topbar">
@@ -67,6 +67,36 @@
       <div class="credential-actions"><button class="button button--secondary" id="copy-account-key" type="button">Sao chép key</button></div>
       <footer class="modal__footer"><button class="button button--primary" type="button" data-close-dialog="account-key-result-dialog">Đã lưu key</button></footer>
     </section>
+  </dialog>
+
+  <dialog class="modal" id="document-permission-dialog">
+    <form class="modal__card" id="document-permission-form">
+      <header class="modal__header"><div><h2>Phân quyền tài liệu</h2><p id="document-permission-user-label">Tài khoản</p></div><button class="icon-button" type="button" data-close-dialog="document-permission-dialog">×</button></header>
+      <div class="permission-box" id="document-permission-role-note"></div>
+      <label class="form-field">Mức tài liệu tối đa<select name="document_scope" required><option value="auto">Theo quyền mặc định của vai trò</option><option value="public">Cấp 1 — Công khai</option><option value="internal">Đến Cấp 2 — Nội bộ</option><option value="sensitive">Đến Cấp 3 — Mật / nhạy cảm</option><option value="secret">Đến Cấp 4 — Bí mật</option><option value="restricted">Đến Cấp 5 — Hạn chế đặc biệt</option></select><small>Chỉ có thể thu hẹp quyền so với vai trò; không thể nâng Manager vượt quá Cấp 3.</small></label>
+      <label class="form-field">Nội dung công việc được giao (tùy chọn)<input name="task_description" maxlength="240" placeholder="Ví dụ: Quản lý hồ sơ nhạy cảm của đơn vị A"></label>
+      <p class="form-message" id="document-permission-message"></p>
+      <footer class="modal__footer"><button class="button button--secondary" type="button" data-close-dialog="document-permission-dialog">Hủy</button><button class="button button--primary" type="submit">Lưu quyền tài liệu</button></footer>
+    </form>
+  </dialog>
+
+  <dialog class="modal" id="password-reset-dialog">
+    <section class="modal__card">
+      <header class="modal__header"><div><h2>Đặt lại mật khẩu mặc định</h2><p id="password-reset-user-label">Tài khoản</p></div><button class="icon-button" type="button" data-close-dialog="password-reset-dialog">×</button></header>
+      <p class="form-message" id="password-reset-message"></p>
+      <footer class="modal__footer"><button class="button button--secondary" type="button" data-close-dialog="password-reset-dialog">Hủy</button><button class="button button--primary" id="confirm-password-reset" type="button">Đặt lại về ptit@123</button></footer>
+    </section>
+  </dialog>
+
+  <dialog class="modal" id="own-password-dialog">
+    <form class="modal__card" id="own-password-form">
+      <header class="modal__header"><div><h2>Đổi mật khẩu của tôi</h2><p>Nhập mật khẩu hiện tại để xác nhận. Sau khi đổi, bạn sẽ cần đăng nhập lại.</p></div><button class="icon-button" type="button" data-close-dialog="own-password-dialog">×</button></header>
+      <label class="form-field">Mật khẩu hiện tại<input name="current_password" type="password" autocomplete="current-password" required></label>
+      <label class="form-field">Mật khẩu mới<input name="new_password" type="password" autocomplete="new-password" minlength="6" required><small>Tối thiểu 6 ký tự, có ít nhất một chữ hoa và một ký tự đặc biệt.</small></label>
+      <label class="form-field">Nhập lại mật khẩu mới<input name="confirm_password" type="password" autocomplete="new-password" minlength="6" required></label>
+      <p class="form-message" id="own-password-message"></p>
+      <footer class="modal__footer"><button class="button button--secondary" type="button" data-close-dialog="own-password-dialog">Hủy</button><button class="button button--primary" type="submit">Đổi mật khẩu</button></footer>
+    </form>
   </dialog>
 
   <dialog class="modal" id="delete-user-dialog">

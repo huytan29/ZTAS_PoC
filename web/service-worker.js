@@ -1,4 +1,4 @@
-const CACHE_NAME = "ztas-console-shell-v34";
+const CACHE_NAME = "ztas-console-shell-v38";
 const STATIC_ASSETS = [
   "/assets/common.css",
   "/assets/common.js",

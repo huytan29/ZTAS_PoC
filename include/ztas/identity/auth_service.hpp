@@ -38,6 +38,22 @@ struct UserDeletionResult {
     std::string username;
 };
 
+struct UserPermissionUpdateResult {
+    bool success = false;
+    std::string code;
+    std::string message;
+    std::string username;
+    std::vector<std::string> assigned_tasks;
+    std::string task_description;
+};
+
+struct PasswordChangeResult {
+    bool success = false;
+    std::string code;
+    std::string message;
+    std::string username;
+};
+
 struct DeviceAssignmentResult {
     bool success = false;
     std::string code;
@@ -105,6 +121,27 @@ public:
 
     // Cap lai Account Key cho tai khoan co san va vo hieu hoa key cu ngay lap tuc.
     AccountKeyIssueResult issue_account_key(
+        const std::string& username
+    ) const;
+
+    // Cap/thu hep pham vi tai lieu cua tai khoan. Pham vi khong the vuot qua
+    // role va don vi cua tai khoan; dang xuat/dang nhap lai de ap dung token moi.
+    UserPermissionUpdateResult update_document_permissions(
+        const std::string& username,
+        const std::vector<std::string>& assigned_tasks,
+        const std::string& task_description = ""
+    ) const;
+
+    // Nguoi dung tu doi mat khau cua chinh minh; phai xac nhan mat khau cu.
+    PasswordChangeResult change_own_password(
+        const std::string& username,
+        const std::string& current_password,
+        const std::string& new_password
+    ) const;
+
+    // Admin chi dat lai tai khoan khach ve mat khau mac dinh ptit@123. Mat
+    // khau cua admin chi co the duoc doi qua change_own_password().
+    PasswordChangeResult reset_user_password_to_default(
         const std::string& username
     ) const;
 

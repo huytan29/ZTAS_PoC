@@ -516,6 +516,72 @@ DeviceOperationResult DeviceManagementService::update_security_context(
     }
 }
 
+DeviceOperationResult DeviceManagementService::reissue_device_key(
+    const std::string& device_id
+) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    if (!valid_device_id(device_id)) {
+        return failure("INVALID_DEVICE_ID", "Device ID khong hop le");
+    }
+
+    try {
+        const json devices_policy = read_json(devices_policy_file_);
+        if (!devices_policy.contains("devices") ||
+            !devices_policy.at("devices").contains(device_id)) {
+            return failure("DEVICE_NOT_FOUND", "Khong tim thay thiet bi trong policy");
+        }
+        const json& device = devices_policy.at("devices").at(device_id);
+        if (!device.value("registered", false) ||
+            device.value("lifecycle_status", "") != "ACTIVE") {
+            return failure("DEVICE_NOT_ACTIVE", "Chi cap lai khoa cho thiet bi dang hoat dong");
+        }
+        if (!fs::exists(credentials_file_)) {
+            return failure("DEVICE_CREDENTIAL_NOT_FOUND", "Khong tim thay khoa dinh danh hien tai");
+        }
+
+        json credentials = read_json(credentials_file_);
+        if (!credentials.contains("devices") ||
+            !credentials.at("devices").contains(device_id)) {
+            return failure("DEVICE_CREDENTIAL_NOT_FOUND", "Khong tim thay khoa dinh danh hien tai");
+        }
+
+        const std::string device_key = create_device_key();
+        const std::string browser_proof_hash = credentials["devices"][device_id]
+            .value("browser_proof_hash", "");
+        credentials["devices"][device_id] = {
+            {"active", true},
+            {"key_hash", hash_key(device_key)}
+        };
+        if (!browser_proof_hash.empty()) {
+            credentials["devices"][device_id]["browser_proof_hash"] =
+                browser_proof_hash;
+        }
+        write_json(credentials_file_, credentials);
+        write_environment(
+            fs::path(device_environment_directory_) / (device_id + ".env"),
+            device_id,
+            device_key,
+            device.value("location_id", "unknown")
+        );
+
+        return {
+            true,
+            "DEVICE_KEY_REISSUED",
+            "Da cap lai Device Key; khoa cu da mat hieu luc ngay",
+            device_id,
+            device_key,
+            device.value("trust_level", 0),
+            device.value("location_id", ""),
+            device.value("device_name", device_id),
+            device.value("device_type", "unknown"),
+            device.value("enrollment_profile", "manual")
+        };
+    } catch (const std::exception& error) {
+        return failure("DEVICE_KEY_REISSUE_ERROR", error.what());
+    }
+}
+
 DeviceOperationResult DeviceManagementService::recover_browser_proof(
     const std::string& device_id,
     const std::string& browser_device_proof

@@ -5,6 +5,9 @@ let managedUsers = [];
 let accountToAssign = null;
 let registeredDevices = [];
 let issuedAccountKey = "";
+let userForDocumentPermissions = null;
+let userForPasswordReset = "";
+let userForOwnPasswordChange = "";
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, character => ({
@@ -60,6 +63,22 @@ function tasksForScope(scope, organizationUnit) {
   return tasks;
 }
 
+function maximumDocumentLevel(role) {
+  return ({ guest: 1, employee: 2, manager: 3, engineer: 4, business_admin: 5, admin: 2 })[role] ?? 0;
+}
+
+function scopeForTasks(tasks) {
+  if ((tasks ?? []).includes("*")) return "restricted";
+  const scopes = ["restricted", "secret", "sensitive", "internal", "public"];
+  return scopes.find(scope => (tasks ?? []).some(task =>
+    scope === "public" ? task === "public" : task.startsWith(`${scope}-`)
+  )) ?? "public";
+}
+
+function scopeLevel(scope) {
+  return ({ public: 1, internal: 2, sensitive: 3, secret: 4, restricted: 5 })[scope] ?? 0;
+}
+
 function apiHeaders(json = false) {
   const headers = json ? { "Content-Type": "application/json" } : {};
   if (adminToken) headers.Authorization = `Bearer ${adminToken}`;
@@ -91,11 +110,17 @@ function renderUsers(users) {
     const hasGlobalScope = devices.includes("*");
     const taskText = user.task_description || taskScopeLabel(user.assigned_tasks);
     const scope = `${organizationLabel(user.organization_unit || "unit-a")} · ${taskText}`;
-    return `<tr><td><strong>${escapeHtml(user.username)}</strong><small class="account-scope">${escapeHtml(scope)}</small></td><td><span class="role-badge role-badge--${escapeHtml(user.role)}">${escapeHtml(roleLabel(user.role))}</span></td><td class="account-table__permission">${escapeHtml(rolePermissionShort(user.role))}</td><td class="account-table__devices">${escapeHtml(devicesText)}</td><td>${escapeHtml(session)}</td><td class="account-table__actions"><div class="account-action-group">${hasGlobalScope ? '<span class="account-self">Phạm vi toàn hệ thống</span>' : `<button class="button button--secondary button--small" data-assign-user="${escapeHtml(user.username)}">Gán thiết bị</button>`}<button class="button button--secondary button--small" data-issue-account-key="${escapeHtml(user.username)}">Cấp lại key</button>${isCurrent ? '<span class="account-self">Phiên hiện tại</span>' : `<button class="button button--danger-outline button--small" data-delete-user="${escapeHtml(user.username)}">Xóa</button>`}</div></td></tr>`;
+    const passwordAction = isCurrent
+      ? `<button class="button button--secondary button--small" data-change-own-password="${escapeHtml(user.username)}">Đổi mật khẩu</button>`
+      : `<button class="button button--secondary button--small" data-reset-password="${escapeHtml(user.username)}">Đặt lại mật khẩu</button>`;
+    return `<tr><td><strong>${escapeHtml(user.username)}</strong><small class="account-scope">${escapeHtml(scope)}</small></td><td><span class="role-badge role-badge--${escapeHtml(user.role)}">${escapeHtml(roleLabel(user.role))}</span></td><td class="account-table__permission">${escapeHtml(rolePermissionShort(user.role))}</td><td class="account-table__devices">${escapeHtml(devicesText)}</td><td>${escapeHtml(session)}</td><td class="account-table__actions"><div class="account-action-group">${hasGlobalScope ? '<span class="account-self">Phạm vi toàn hệ thống</span>' : `<button class="button button--secondary button--small" data-assign-user="${escapeHtml(user.username)}">Gán thiết bị</button>`}<button class="button button--secondary button--small" data-edit-document-permissions="${escapeHtml(user.username)}">Quyền tài liệu</button>${passwordAction}<button class="button button--secondary button--small" data-issue-account-key="${escapeHtml(user.username)}">Cấp lại key</button>${isCurrent ? '<span class="account-self">Phiên hiện tại</span>' : `<button class="button button--danger-outline button--small" data-delete-user="${escapeHtml(user.username)}">Xóa</button>`}</div></td></tr>`;
   }).join("")}</tbody></table>`;
 
   container.querySelectorAll("[data-delete-user]").forEach(button => button.addEventListener("click", () => openDeleteDialog(button.dataset.deleteUser)));
   container.querySelectorAll("[data-assign-user]").forEach(button => button.addEventListener("click", () => openAssignmentDialog(button.dataset.assignUser)));
+  container.querySelectorAll("[data-edit-document-permissions]").forEach(button => button.addEventListener("click", () => openDocumentPermissionDialog(button.dataset.editDocumentPermissions)));
+  container.querySelectorAll("[data-reset-password]").forEach(button => button.addEventListener("click", () => openPasswordResetDialog(button.dataset.resetPassword)));
+  container.querySelectorAll("[data-change-own-password]").forEach(button => button.addEventListener("click", () => openOwnPasswordDialog(button.dataset.changeOwnPassword)));
   container.querySelectorAll("[data-issue-account-key]").forEach(button => button.addEventListener("click", () => issueAccountKey(button.dataset.issueAccountKey)));
 }
 
@@ -137,6 +162,116 @@ function openDeleteDialog(username) {
   document.querySelector("#delete-user-message").textContent = "";
   showDialog("delete-user-dialog");
 }
+
+function openPasswordResetDialog(username) {
+  userForPasswordReset = username;
+  document.querySelector("#password-reset-user-label").textContent =
+    `Đặt lại mật khẩu của ${username} về mặc định ptit@123. Toàn bộ phiên đang đăng nhập của tài khoản này sẽ bị đăng xuất.`;
+  document.querySelector("#password-reset-message").textContent = "";
+  showDialog("password-reset-dialog");
+}
+
+document.querySelector("#confirm-password-reset").addEventListener("click", async () => {
+  if (!userForPasswordReset) return;
+  const message = document.querySelector("#password-reset-message");
+  message.textContent = "Đang đặt lại mật khẩu…";
+  try {
+    const response = await fetch("/api/users/password", {
+      method: "PUT",
+      headers: apiHeaders(true),
+      body: JSON.stringify({ username: userForPasswordReset })
+    });
+    const data = await parseResponse(response);
+    closeDialog("password-reset-dialog");
+    userForPasswordReset = "";
+    alert(data.message);
+  } catch (error) {
+    message.textContent = error.message;
+  }
+});
+
+function openOwnPasswordDialog(username) {
+  userForOwnPasswordChange = username;
+  const form = document.querySelector("#own-password-form");
+  form.reset();
+  document.querySelector("#own-password-message").textContent = "";
+  showDialog("own-password-dialog");
+  form.elements.current_password.focus();
+}
+
+document.querySelector("#own-password-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const message = document.querySelector("#own-password-message");
+  if (form.elements.new_password.value !== form.elements.confirm_password.value) {
+    message.textContent = "Hai lần nhập mật khẩu mới chưa khớp.";
+    return;
+  }
+  message.textContent = "Đang đổi mật khẩu…";
+  try {
+    const response = await fetch("/api/account/password", {
+      method: "POST",
+      headers: apiHeaders(true),
+      body: JSON.stringify({
+        current_password: form.elements.current_password.value,
+        new_password: form.elements.new_password.value
+      })
+    });
+    const data = await parseResponse(response);
+    alert(data.message);
+    await fetch("/api/logout", { method: "POST" }).catch(() => undefined);
+    sessionStorage.removeItem("ztas_admin_token");
+    location.replace("/login");
+  } catch (error) {
+    message.textContent = error.message;
+  }
+});
+
+function openDocumentPermissionDialog(username) {
+  userForDocumentPermissions = managedUsers.find(user => user.username === username) ?? null;
+  if (!userForDocumentPermissions) return;
+  const form = document.querySelector("#document-permission-form");
+  const maximumLevel = maximumDocumentLevel(userForDocumentPermissions.role);
+  const scope = scopeForTasks(userForDocumentPermissions.assigned_tasks);
+  document.querySelector("#document-permission-user-label").textContent =
+    `${userForDocumentPermissions.username} · ${roleLabel(userForDocumentPermissions.role)} · ${organizationLabel(userForDocumentPermissions.organization_unit)}`;
+  document.querySelector("#document-permission-role-note").innerHTML =
+    `<strong>Giới hạn theo vai trò: ${escapeHtml(rolePermissionShort(userForDocumentPermissions.role))}</strong><span>Admin chỉ có thể cấp tối đa Cấp ${maximumLevel} cho tài khoản này. Thiết bị, đơn vị và MFA vẫn được policy kiểm tra khi đọc.</span>`;
+  [...form.elements.document_scope.options].forEach(option => {
+    option.disabled = option.value !== "auto" && scopeLevel(option.value) > maximumLevel;
+  });
+  form.elements.document_scope.value = scopeLevel(scope) <= maximumLevel ? scope : "auto";
+  form.elements.task_description.value = userForDocumentPermissions.task_description ?? "";
+  document.querySelector("#document-permission-message").textContent = "";
+  showDialog("document-permission-dialog");
+}
+
+document.querySelector("#document-permission-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  if (!userForDocumentPermissions) return;
+  const form = event.currentTarget;
+  const message = document.querySelector("#document-permission-message");
+  message.textContent = "Đang lưu quyền tài liệu…";
+  try {
+    const scope = form.elements.document_scope.value;
+    const response = await fetch("/api/users/document-permissions", {
+      method: "PUT",
+      headers: apiHeaders(true),
+      body: JSON.stringify({
+        username: userForDocumentPermissions.username,
+        assigned_tasks: tasksForScope(scope, userForDocumentPermissions.organization_unit),
+        task_description: form.elements.task_description.value.trim()
+      })
+    });
+    const data = await parseResponse(response);
+    closeDialog("document-permission-dialog");
+    userForDocumentPermissions = null;
+    await refreshUsers();
+    alert(data.message);
+  } catch (error) {
+    message.textContent = error.message;
+  }
+});
 
 async function loadRegisteredDevices() {
   const response = await fetch("/api/registered-devices", { cache: "no-store", headers: apiHeaders() });

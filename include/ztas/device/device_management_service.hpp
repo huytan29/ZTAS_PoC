@@ -59,6 +59,11 @@ public:
         const std::string& location_id
     ) const;
 
+    // Cap Device Key moi cho thiet bi dang hoat dong. Key cu mat hieu luc ngay.
+    DeviceOperationResult reissue_device_key(
+        const std::string& device_id
+    ) const;
+
     // Khoi phuc bang chung trinh duyet cho THIET BI DANG HOAT DONG. Khong tao
     // Device ID moi, khong doi Device Key, khong thay doi trust/policy hay
     // lien ket tai khoan. Nguoi goi phai xac minh tai khoan da duoc gan voi

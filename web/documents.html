@@ -9,9 +9,9 @@
   <link rel="apple-touch-icon" href="/assets/ptit-logo-white.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <link rel="stylesheet" href="/assets/common.css">
-  <link rel="stylesheet" href="/assets/documents.css?v=3">
+  <link rel="stylesheet" href="/assets/documents.css?v=4">
   <script defer src="/assets/common.js"></script>
-  <script defer src="/assets/documents.js?v=22"></script>
+  <script defer src="/assets/documents.js?v=25"></script>
 </head>
 <body>
   <header class="topbar">
@@ -36,6 +36,7 @@
       <aside class="panel access-panel">
         <header class="panel__header"><h2>Tài khoản đang truy cập</h2><p>Phiên đăng nhập hệ thống được dùng trực tiếp để đọc tài liệu.</p></header>
         <div class="reader-account-note" id="reader-account-note"><strong>Đang xác thực tài khoản…</strong><span>ZTAS đang đối chiếu tài khoản và thiết bị đã được cấp phát.</span></div>
+        <div class="access-panel__actions"><button class="button button--secondary button--small" id="reader-password-change-button" type="button" hidden>Đổi mật khẩu</button></div>
         <div class="reader-policy-note"><strong>Zero Trust</strong><span>Thiết bị và IP được xác minh ngầm. Tài khoản chỉ thấy tài liệu được policy cấp quyền.</span></div>
       </aside>
 
@@ -84,6 +85,17 @@
       <label class="document-upload-field">Mã Step-Up<input name="mfa_code" type="password" autocomplete="one-time-code" required></label>
       <p class="document-upload-message" id="mfa-code-message"></p>
       <footer class="document-upload-dialog__footer"><button class="button button--secondary" id="mfa-code-cancel" type="button">Hủy</button><button class="button button--primary" type="submit">Xác nhận mã</button></footer>
+    </form>
+  </dialog>
+
+  <dialog class="document-upload-dialog" id="reader-password-dialog" aria-labelledby="reader-password-title">
+    <form class="document-upload-dialog__card" id="reader-password-form">
+      <header class="document-upload-dialog__header"><div><p class="page-kicker">Tài khoản cá nhân</p><h2 id="reader-password-title">Đổi mật khẩu</h2><p>Sau khi đổi mật khẩu, phiên hiện tại sẽ tự đăng xuất để bảo vệ tài khoản.</p></div><button class="document-reader-dialog__close" id="reader-password-close" type="button" aria-label="Đóng">×</button></header>
+      <label class="document-upload-field">Mật khẩu hiện tại<input name="current_password" type="password" autocomplete="current-password" required></label>
+      <label class="document-upload-field">Mật khẩu mới<input name="new_password" type="password" autocomplete="new-password" minlength="6" required><small>Tối thiểu 6 ký tự, có ít nhất một chữ hoa và một ký tự đặc biệt.</small></label>
+      <label class="document-upload-field">Nhập lại mật khẩu mới<input name="confirm_password" type="password" autocomplete="new-password" minlength="6" required></label>
+      <p class="document-upload-message" id="reader-password-message"></p>
+      <footer class="document-upload-dialog__footer"><button class="button button--secondary" id="reader-password-cancel" type="button">Hủy</button><button class="button button--primary" type="submit">Đổi mật khẩu</button></footer>
     </form>
   </dialog>
 

@@ -185,6 +185,19 @@ std::string create_password_hash(const std::string& password) {
         hex_encode(derived, sizeof(derived));
 }
 
+bool valid_password_policy(const std::string& password) {
+    if (password.size() < 6) return false;
+    const bool has_upper = std::any_of(
+        password.begin(), password.end(),
+        [](unsigned char value) { return std::isupper(value) != 0; }
+    );
+    const bool has_special = std::any_of(
+        password.begin(), password.end(),
+        [](unsigned char value) { return !std::isalnum(value); }
+    );
+    return has_upper && has_special;
+}
+
 std::string generate_account_key() {
     unsigned char bytes[24];
     if (RAND_bytes(bytes, sizeof(bytes)) != 1) {
@@ -264,6 +277,22 @@ std::vector<std::string> default_tasks_for_role(
     }
     if (role == "engineer") tasks.push_back("secret-" + suffix);
     return tasks;
+}
+
+bool tasks_allowed_for_role(
+    const std::string& role,
+    const std::string& organization_unit,
+    const std::vector<std::string>& tasks
+) {
+    // Lanh dao duoc uy quyen co the duoc cap pham vi bat ky den cap 5;
+    // OPA van kiem tra don vi/nhiem vu tren tung tai lieu.
+    if (role == "business_admin") return true;
+
+    const auto permitted = default_tasks_for_role(role, organization_unit);
+    return std::all_of(tasks.begin(), tasks.end(), [&](const std::string& task) {
+        return std::find(permitted.begin(), permitted.end(), task) !=
+            permitted.end();
+    });
 }
 
 std::vector<std::string> effective_tasks_for_user(const json& user) {
@@ -469,7 +498,8 @@ std::optional<AccessSubject> AuthService::authenticate(
                     "",
                     "",
                     user.value("organization_unit", "unit-a"),
-                    effective_tasks_for_user(user)
+                    effective_tasks_for_user(user),
+                    user.value("credential_version", 0LL)
                 };
             }
         }
@@ -527,7 +557,8 @@ std::optional<AccessSubject> AuthService::authenticate_device_enrollment(
                 "",
                 "",
                 user.value("organization_unit", "unit-a"),
-                effective_tasks_for_user(user)
+                effective_tasks_for_user(user),
+                user.value("credential_version", 0LL)
             };
         }
     } catch (const std::exception&) {
@@ -726,6 +757,15 @@ UserProvisioningResult AuthService::create_user(
         const std::vector<std::string> effective_tasks = assigned_tasks.empty()
             ? default_tasks_for_role(role, organization_unit)
             : assigned_tasks;
+        if (!tasks_allowed_for_role(role, organization_unit, effective_tasks)) {
+            return {
+                false,
+                "TASK_SCOPE_EXCEEDS_ROLE",
+                "Pham vi tai lieu vuot qua quyen cua vai tro hoac don vi",
+                "",
+                ""
+            };
+        }
         json user = {
             {"username", username},
             {"role", role},
@@ -764,6 +804,160 @@ UserProvisioningResult AuthService::create_user(
             "",
             ""
         };
+    }
+}
+
+UserPermissionUpdateResult AuthService::update_document_permissions(
+    const std::string& username,
+    const std::vector<std::string>& assigned_tasks,
+    const std::string& task_description
+) const {
+    if (!valid_username(username)) {
+        return {false, "INVALID_USERNAME", "Ten dang nhap khong hop le", "", {}, ""};
+    }
+    for (const auto& task : assigned_tasks) {
+        if (task != "*" && !valid_attribute_id(task)) {
+            return {false, "INVALID_ASSIGNED_TASK", "Pham vi tai lieu khong hop le", "", {}, ""};
+        }
+    }
+    if (!valid_task_description(task_description)) {
+        return {false, "INVALID_TASK_DESCRIPTION", "Mo ta cong viec toi da 240 ky tu", "", {}, ""};
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    try {
+        std::ifstream file(users_file_);
+        json users_data = json::parse(file);
+        file.close();
+        if (!users_data.contains("users") || !users_data["users"].is_array()) {
+            return {false, "INVALID_USERS_STORE", "Kho tai khoan khong dung dinh dang", "", {}, ""};
+        }
+
+        for (auto& user : users_data["users"]) {
+            if (user.value("username", "") != username) continue;
+            const std::string role = user.value("role", "guest");
+            const std::string organization_unit = user.value("organization_unit", "unit-a");
+            const std::vector<std::string> effective_tasks = assigned_tasks.empty()
+                ? default_tasks_for_role(role, organization_unit)
+                : assigned_tasks;
+            if (!tasks_allowed_for_role(role, organization_unit, effective_tasks)) {
+                return {
+                    false,
+                    "TASK_SCOPE_EXCEEDS_ROLE",
+                    "Pham vi tai lieu vuot qua quyen cua vai tro hoac don vi",
+                    username,
+                    {},
+                    ""
+                };
+            }
+
+            user["assigned_tasks"] = effective_tasks;
+            user["task_description"] = task_description;
+            write_users_data(users_file_, users_data);
+            return {
+                true,
+                "USER_DOCUMENT_PERMISSIONS_UPDATED",
+                "Da cap nhat pham vi tai lieu. Nguoi dung can dang xuat va dang nhap lai.",
+                username,
+                effective_tasks,
+                task_description
+            };
+        }
+        return {false, "USER_NOT_FOUND", "Khong tim thay tai khoan", username, {}, ""};
+    } catch (const std::exception& error) {
+        return {false, "USER_PERMISSION_UPDATE_ERROR", error.what(), username, {}, ""};
+    }
+}
+
+PasswordChangeResult AuthService::change_own_password(
+    const std::string& username,
+    const std::string& current_password,
+    const std::string& new_password
+) const {
+    if (!valid_username(username)) {
+        return {false, "INVALID_USERNAME", "Ten dang nhap khong hop le", ""};
+    }
+    if (!valid_password_policy(new_password)) {
+        return {
+            false,
+            "PASSWORD_POLICY_NOT_MET",
+            "Mat khau phai co it nhat 6 ky tu, gom it nhat 1 chu hoa va 1 ky tu dac biet",
+            username
+        };
+    }
+    if (current_password.empty()) {
+        return {false, "CURRENT_PASSWORD_REQUIRED", "Can nhap mat khau hien tai", username};
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    try {
+        std::ifstream file(users_file_);
+        json users_data = json::parse(file);
+        file.close();
+        if (!users_data.contains("users") || !users_data["users"].is_array()) {
+            return {false, "INVALID_USERS_STORE", "Kho tai khoan khong dung dinh dang", ""};
+        }
+
+        for (auto& user : users_data["users"]) {
+            if (user.value("username", "") != username) continue;
+            if (!verify_secret(current_password, user.value("password_hash", ""))) {
+                return {false, "CURRENT_PASSWORD_INVALID", "Mat khau hien tai khong dung", username};
+            }
+            user["password_hash"] = create_password_hash(new_password);
+            user["credential_version"] = user.value("credential_version", 0LL) + 1;
+            write_users_data(users_file_, users_data);
+            return {
+                true,
+                "PASSWORD_CHANGED",
+                "Da doi mat khau va vo hieu hoa tat ca phien dang nhap cu",
+                username
+            };
+        }
+        return {false, "USER_NOT_FOUND", "Khong tim thay tai khoan", username};
+    } catch (const std::exception& error) {
+        return {false, "PASSWORD_CHANGE_ERROR", error.what(), username};
+    }
+}
+
+PasswordChangeResult AuthService::reset_user_password_to_default(
+    const std::string& username
+) const {
+    if (!valid_username(username)) {
+        return {false, "INVALID_USERNAME", "Ten dang nhap khong hop le", ""};
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    try {
+        std::ifstream file(users_file_);
+        json users_data = json::parse(file);
+        file.close();
+        if (!users_data.contains("users") || !users_data["users"].is_array()) {
+            return {false, "INVALID_USERS_STORE", "Kho tai khoan khong dung dinh dang", ""};
+        }
+
+        for (auto& user : users_data["users"]) {
+            if (user.value("username", "") != username) continue;
+            if (user.value("role", "") == "admin") {
+                return {
+                    false,
+                    "ADMIN_PASSWORD_SELF_CHANGE_ONLY",
+                    "Mat khau admin chi duoc doi boi chinh admin sau khi nhap mat khau hien tai",
+                    username
+                };
+            }
+            user["password_hash"] = create_password_hash("ptit@123");
+            user["credential_version"] = user.value("credential_version", 0LL) + 1;
+            write_users_data(users_file_, users_data);
+            return {
+                true,
+                "PASSWORD_RESET_TO_DEFAULT",
+                "Da dat lai mat khau mac dinh ptit@123 va vo hieu hoa tat ca phien cu",
+                username
+            };
+        }
+        return {false, "USER_NOT_FOUND", "Khong tim thay tai khoan", username};
+    } catch (const std::exception& error) {
+        return {false, "PASSWORD_RESET_ERROR", error.what(), username};
     }
 }
 
@@ -994,6 +1188,7 @@ std::string AuthService::issue_token(
         {"allowed_device_ids", subject.allowed_device_ids},
         {"organization_unit", subject.organization_unit},
         {"assigned_tasks", subject.assigned_tasks},
+        {"credential_version", subject.credential_version},
         {"account_expires_at", subject.account_expires_at},
         {"iat", now},
         {"exp", token_expiry}
@@ -1083,6 +1278,8 @@ std::optional<AccessSubject> AuthService::verify_token(
 
         const std::string role =
             payload.value("role", "");
+        const long long credential_version =
+            payload.value("credential_version", 0LL);
 
         if (username.empty() || role.empty()) {
             return std::nullopt;
@@ -1104,6 +1301,9 @@ std::optional<AccessSubject> AuthService::verify_token(
             if (configured_expiry > 0 && configured_expiry <= now) {
                 return std::nullopt;
             }
+            if (user.value("credential_version", 0LL) != credential_version) {
+                return std::nullopt;
+            }
 
             return AccessSubject{
                 username,
@@ -1118,7 +1318,8 @@ std::optional<AccessSubject> AuthService::verify_token(
                 payload.value("reader_location_id", ""),
                 payload.value("mfa_challenge_id", ""),
                 user.value("organization_unit", "unit-a"),
-                effective_tasks_for_user(user)
+                effective_tasks_for_user(user),
+                credential_version
             };
         }
 

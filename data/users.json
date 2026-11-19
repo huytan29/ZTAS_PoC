@@ -15,52 +15,24 @@
       "username": "admin"
     },
     {
-      "account_key_hash": "pbkdf2_sha256$200000$ef84255e0510b58f586b9a43c76e1e51$88fe799ded03c3de20d6e19992b0c876d751fad4342b147c0346ad3902dd6983",
-      "account_key_issued_at": 1794750335,
-      "allowed_device_ids": [],
-      "assigned_tasks": [
-        "public",
-        "internal-a",
-        "sensitive-a"
-      ],
-      "expires_at": 0,
-      "organization_unit": "unit-a",
-      "password_hash": "pbkdf2_sha256$200000$00832046518204f942acca6f019b1389$63b19cec3d99c93cefc27e26a4acc1e8d5a6b33565c714f79b1db79f96e8559c",
-      "role": "manager",
-      "username": "huytan29"
-    },
-    {
-      "account_key_hash": "pbkdf2_sha256$200000$89b4bc057ab131799c8be02e6d843365$7951db11b29b173cd2992bd455b301944c2648e2d75894a5f21922d0f8df9d27",
-      "account_key_issued_at": 1794747378,
-      "allowed_device_ids": [
-        "web-e6045dde8ead4370b1b6853c"
-      ],
-      "assigned_tasks": [
-        "public",
-        "internal-a",
-        "sensitive-a"
-      ],
-      "expires_at": 0,
-      "organization_unit": "unit-a",
-      "password_hash": "pbkdf2_sha256$200000$9a46ff7ac8106297b8b46970b4df887c$b5a77f336084341b1fcd7bcdcbba2cfbdbf789ed2d321270b0ea352230559dd8",
-      "role": "manager",
-      "username": "windows1"
-    },
-    {
-      "account_key_hash": "pbkdf2_sha256$200000$03d73ac8b6543d0b031efeb7a2c37588$76cba706663f104100d0ee181bcc6a03328e61af29b38a2fd8ffb7565c094e6f",
-      "account_key_issued_at": 1794995194,
+      "account_key_hash": "pbkdf2_sha256$200000$5017347a9723f85abbdd673b06e202f1$6de62c214a525a43f52e84bb33db09cd5f50a2ea99979cd28985198c7e48db7d",
+      "account_key_issued_at": 1795072304,
       "allowed_device_ids": [
         "web-9f5c9af228454bb0bb381280"
       ],
       "assigned_tasks": [
-        "public"
+        "public",
+        "internal-a",
+        "sensitive-a",
+        "secret-a",
+        "restricted-a"
       ],
       "expires_at": 0,
       "organization_unit": "unit-a",
-      "password_hash": "pbkdf2_sha256$200000$f8c25483ee9edb156d86b294364122a7$c7c5930a3e7cbf8101d17cf6dd30b671f1bb9bd50739ff90c85d78730c853b91",
-      "role": "employee",
-      "task_description": "Quản lý văn bản công khai đơn vị A",
-      "username": "ubuntu1"
+      "password_hash": "pbkdf2_sha256$200000$8707aa2dd3b992a48694fdd70d8e19a7$f9f3bb84ca21a6dee559119f1a54104df36a16189cf8b8e7631ba96d2656380b",
+      "role": "business_admin",
+      "task_description": "",
+      "username": "lanhdao1"
     }
   ]
 }

@@ -29,6 +29,9 @@ struct AccessSubject{
     // nguyen duoc giao. Day khong phai la quyen ky thuat cua system admin.
     std::string organization_unit;
     std::vector<std::string> assigned_tasks;
+    // Tang khi admin dat lai mat khau. Moi token cu co version khac se bi
+    // vo hieu hoa ngay trong lan kiem tra tiep theo.
+    long long credential_version = 0;
 };
 
 // Tài nguyên được bảo vệ trong hệ thống

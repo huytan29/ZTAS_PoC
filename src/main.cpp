@@ -268,8 +268,12 @@ std::string client_source_ip(const httplib::Request& request) {
     const std::string remote_ip = request.remote_addr.empty()
         ? "unknown"
         : request.remote_addr;
+    // Caddy cua ZTAS luon reverse proxy tu loopback. Tin X-Forwarded-For trong
+    // truong hop nay de nhan dung IP may khach, ke ca khi server duoc chay
+    // truc tiep thay vi qua Makefile. Header tu bat ky may LAN nao van bi bo
+    // qua, vi remote_addr khi do khong phai loopback.
     static const bool trust_loopback_proxy =
-        env_flag("ZTAS_TRUST_LOOPBACK_PROXY", false);
+        env_flag("ZTAS_TRUST_LOOPBACK_PROXY", true);
 
     if (!trust_loopback_proxy || !is_loopback_address(remote_ip) ||
         !request.has_header("X-Forwarded-For")) {
@@ -329,7 +333,8 @@ std::optional<json> read_json_file(const std::string& path) {
 json device_inventory(
     const json& policy_data,
     const json& audit_events,
-    const json& users_data
+    const json& users_data,
+    bool include_all_devices = false
 ) {
     json devices = json::array();
     std::unordered_map<std::string, std::size_t> indexes;
@@ -398,22 +403,23 @@ json device_inventory(
         }
     }
 
-    // Dashboard chi hien thiet bi da duoc cap phat va co gan tai khoan cu the.
-    // May la chi co trong audit/pending_devices.json, khong nam trong day.
-    json approved_devices = json::array();
+    // Bang trang thai chi hien thiet bi hoat dong da gan tai khoan; kho quan
+    // tri thi giu ca thiet bi bi thu hoi, bi chan va chua duoc gan tai khoan.
+    json visible_devices = json::array();
     indexes.clear();
     for (const auto& device : devices) {
-        if (!device.value("registered", false) ||
-            !device.value("approved", false)) {
+        if (!include_all_devices &&
+            (!device.value("registered", false) ||
+             !device.value("approved", false))) {
             continue;
         }
 
         json visible_device = device;
         visible_device.erase("approved");
-        indexes[visible_device.value("id", "")] = approved_devices.size();
-        approved_devices.push_back(visible_device);
+        indexes[visible_device.value("id", "")] = visible_devices.size();
+        visible_devices.push_back(visible_device);
     }
-    devices = std::move(approved_devices);
+    devices = std::move(visible_devices);
 
     for (const auto& event : audit_events) {
         const std::string id = event.value("device_id", "");
@@ -1623,6 +1629,38 @@ int main() {
         );
     });
 
+    // Kho quan tri hien ca thiet bi da thu hoi/bi chan/chua gan tai khoan.
+    // Endpoint chi danh cho admin, khac voi Dashboard trang thai thu gon.
+    server.Get("/api/device-inventory", [
+        &auth_service,
+        &devices_policy_file,
+        &users_file,
+        &audit_logger
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto admin =
+            authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) return;
+
+        const auto policy_data = read_json_file(devices_policy_file);
+        if (!policy_data.has_value()) {
+            send_json(response, 500, {
+                {"error", "DEVICES_POLICY_FILE_NOT_FOUND"}
+            });
+            return;
+        }
+        const json users_data =
+            read_json_file(users_file).value_or(json::object());
+        send_json(response, 200, device_inventory(
+            *policy_data,
+            audit_logger.read_recent(1000),
+            users_data,
+            true
+        ));
+    });
+
     server.Get("/api/data-zones", [
         &auth_service,
         &data_store,
@@ -1937,6 +1975,128 @@ int main() {
                     {"role", result.role}
                 }}
             });
+        } catch (const json::exception&) {
+            send_json(response, 400, {{"error", "INVALID_JSON"}});
+        }
+    });
+
+    // Dieu chinh pham vi tai lieu cua tai khoan co san. AuthService tu kiem
+    // tra scope khong vuot role/don vi; OPA tiep tuc quyet dinh luc doc.
+    server.Put("/api/users/document-permissions", [
+        &auth_service,
+        &audit_logger
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto admin =
+            authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) return;
+
+        try {
+            const json body = json::parse(request.body);
+            const UserPermissionUpdateResult result =
+                auth_service.update_document_permissions(
+                    body.value("username", ""),
+                    body.value("assigned_tasks", std::vector<std::string>{}),
+                    body.value("task_description", "")
+                );
+            if (!result.success) {
+                const int status = result.code == "USER_NOT_FOUND" ? 404 : 400;
+                send_json(response, status, {
+                    {"error", result.code}, {"message", result.message}
+                });
+                return;
+            }
+            audit_logger.write({
+                {"event_type", "USER_DOCUMENT_PERMISSIONS_UPDATED"},
+                {"actor", admin->username},
+                {"username", result.username},
+                {"assigned_tasks", result.assigned_tasks},
+                {"task_description", result.task_description},
+                {"reason_code", "DOCUMENT_SCOPE_CHANGED_BY_ADMIN"},
+                {"severity", "high"}
+            });
+            send_json(response, 200, {
+                {"message", result.message},
+                {"username", result.username},
+                {"assigned_tasks", result.assigned_tasks},
+                {"task_description", result.task_description}
+            });
+        } catch (const json::exception&) {
+            send_json(response, 400, {{"error", "INVALID_JSON"}});
+        }
+    });
+
+    // Admin chi dat lai tai khoan khach ve mat khau mac dinh. API khong nhan
+    // mat khau tuy chon, tranh viec admin tu dat mat khau ma nguoi dung khong biet.
+    server.Put("/api/users/password", [
+        &auth_service,
+        &audit_logger
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto admin =
+            authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) return;
+
+        try {
+            const json body = json::parse(request.body);
+            const PasswordChangeResult result =
+                auth_service.reset_user_password_to_default(body.value("username", ""));
+            if (!result.success) {
+                const int status = result.code == "USER_NOT_FOUND" ? 404 : 400;
+                send_json(response, status, {
+                    {"error", result.code}, {"message", result.message}
+                });
+                return;
+            }
+            audit_logger.write({
+                {"event_type", "USER_PASSWORD_RESET"},
+                {"actor", admin->username},
+                {"username", result.username},
+                {"reason_code", "ADMIN_PASSWORD_RESET_TO_DEFAULT"},
+                {"severity", "high"}
+            });
+            send_json(response, 200, {
+                {"message", result.message}, {"username", result.username}
+            });
+        } catch (const json::exception&) {
+            send_json(response, 400, {{"error", "INVALID_JSON"}});
+        }
+    });
+
+    // Nguoi dung tu doi mat khau: bat buoc chung minh dang biet mat khau cu.
+    server.Post("/api/account/password", [
+        &auth_service,
+        &audit_logger
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto subject = authenticate_request(request, auth_service, response);
+        if (!subject.has_value()) return;
+        try {
+            const json body = json::parse(request.body);
+            const PasswordChangeResult result = auth_service.change_own_password(
+                subject->username,
+                body.value("current_password", ""),
+                body.value("new_password", "")
+            );
+            if (!result.success) {
+                send_json(response, 400, {
+                    {"error", result.code}, {"message", result.message}
+                });
+                return;
+            }
+            audit_logger.write({
+                {"event_type", "USER_PASSWORD_CHANGED"},
+                {"username", subject->username},
+                {"reason_code", "SELF_SERVICE_PASSWORD_CHANGE"},
+                {"severity", "high"}
+            });
+            send_json(response, 200, {{"message", result.message}});
         } catch (const json::exception&) {
             send_json(response, 400, {{"error", "INVALID_JSON"}});
         }
@@ -3016,6 +3176,55 @@ int main() {
         }
     });
 
+    server.Post("/api/devices/device-key", [
+        &auth_service,
+        &device_management_service,
+        &audit_logger
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto admin =
+            authenticate_admin_request(request, auth_service, response);
+        if (!admin.has_value()) return;
+
+        try {
+            const json body = json::parse(request.body);
+            const DeviceOperationResult result =
+                device_management_service.reissue_device_key(
+                    body.value("device_id", "")
+                );
+            if (!result.success) {
+                const int status = result.code == "DEVICE_NOT_FOUND" ? 404 : 400;
+                send_json(response, status, {
+                    {"error", result.code}, {"message", result.message}
+                });
+                return;
+            }
+            audit_logger.write({
+                {"event_type", "DEVICE_KEY_REISSUED"},
+                {"actor", admin->username},
+                {"device_id", result.device_id},
+                {"reason_code", "ADMIN_REISSUED_DEVICE_KEY"},
+                {"severity", "high"}
+            });
+            send_json(response, 200, {
+                {"message", result.message},
+                {"device", {
+                    {"id", result.device_id},
+                    {"device_name", result.device_name},
+                    {"device_type", result.device_type},
+                    {"trust_level", result.trust_level},
+                    {"location_id", result.location_id},
+                    {"enrollment_profile", result.enrollment_profile}
+                }},
+                {"device_key", result.device_key}
+            });
+        } catch (const json::exception&) {
+            send_json(response, 400, {{"error", "INVALID_JSON"}});
+        }
+    });
+
     server.Post("/api/devices/block", [
         &auth_service,
         &device_management_service,
@@ -3295,7 +3504,12 @@ int main() {
                 )},
                 {"token_type", "Bearer"},
                 {"expires_in", 900},
-                {"subject", {{"username", subject->username}, {"role", subject->role}}},
+                {"subject", {
+                    {"username", subject->username},
+                    {"role", subject->role},
+                    {"organization_unit", subject->organization_unit},
+                    {"assigned_tasks", subject->assigned_tasks}
+                }},
                 {"reader_context", {
                     {"device_id", context->device_id},
                     {"location_id", context->location_id}
@@ -3359,11 +3573,56 @@ int main() {
             )},
             {"token_type", "Bearer"},
             {"expires_in", 900},
-            {"subject", {{"username", subject->username}, {"role", subject->role}}},
+            {"subject", {
+                {"username", subject->username},
+                {"role", subject->role},
+                {"organization_unit", subject->organization_unit},
+                {"assigned_tasks", subject->assigned_tasks}
+            }},
             {"reader_context", {
                 {"device_id", context->device_id},
                 {"location_id", context->location_id}
             }}
+        });
+    });
+
+    // Heartbeat nhe cho giao dien may khach. Khac voi reader-context, endpoint
+    // nay khong cap token moi va khong ghi audit moi moi vai giay. Nhung no
+    // doi chieu lai tai khoan, bang chung trinh duyet va trang thai thiet bi,
+    // nen xoa/thu hoi tren Dashboard co hieu luc ngay tren may khach.
+    server.Get("/api/reader-session-status", [
+        &auth_service,
+        &device_registry
+    ](
+        const httplib::Request& request,
+        httplib::Response& response
+    ) {
+        const auto subject = authenticate_request(request, auth_service, response);
+        if (!subject.has_value()) return;
+
+        const std::string source_ip = client_source_ip(request);
+        const std::string browser_device_proof = read_cookie_value(
+            request, "ZTAS_DEVICE_PROOF"
+        ).value_or("");
+        auto context = device_registry.resolve_reader_context(
+            subject->allowed_device_ids, source_ip, browser_device_proof
+        );
+        if (!context.has_value() && subject->role == "admin") {
+            context = ReaderDeviceContext{"admin-console", "secure-zone"};
+        }
+        if (!context.has_value()) {
+            send_json(response, 403, {
+                {"error", "READER_SESSION_REVOKED"},
+                {"message", "Thiet bi da bi thu hoi, xoa hoac khong con duoc gan cho tai khoan nay"}
+            });
+            return;
+        }
+
+        send_json(response, 200, {
+            {"status", "ACTIVE"},
+            {"username", subject->username},
+            {"device_id", context->device_id},
+            {"location_id", context->location_id}
         });
     });
 

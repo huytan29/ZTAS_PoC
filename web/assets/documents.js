@@ -8,12 +8,21 @@ const readerDialog = document.querySelector("#document-reader-dialog");
 const readerDialogTitle = document.querySelector("#document-reader-title");
 const readerDialogContent = document.querySelector("#document-reader-dialog-content");
 const mfaCodeDialog = document.querySelector("#mfa-code-dialog");
+const readerPasswordDialog = document.querySelector("#reader-password-dialog");
 let mfaCodeResolver = null;
 
 let token = sessionStorage.getItem("ztas_document_token") || "";
 let context = JSON.parse(sessionStorage.getItem("ztas_document_context") || "null");
-let signedInAccount = context ? { username: context.username } : null;
+// Giữ toàn bộ thuộc tính của phiên đã có. Trước đây chỉ giữ username, vì vậy
+// lúc tải lại trang giao diện có thể coi tài khoản là không có role và ẩn hết
+// các thẻ phân vùng dù máy chủ vẫn đã cấp quyền đúng.
+let signedInAccount = context ? {
+  username: context.username,
+  role: context.role,
+  assigned_tasks: context.assigned_tasks
+} : null;
 let storageLoaded = false;
+let readerSessionRevoked = false;
 
 const labels = {
   public: "Công khai", internal: "Nội bộ", confidential: "Mật / nhạy cảm",
@@ -28,6 +37,38 @@ const roleDocumentLevel = {
   business_admin: 5,
   admin: 2
 };
+
+const taskPrefixByLevel = {
+  1: "public",
+  2: "internal",
+  3: "sensitive",
+  4: "secret",
+  5: "restricted"
+};
+
+function normaliseRole(value) {
+  const role = String(value ?? "").trim().toLowerCase();
+  return Object.hasOwn(roleDocumentLevel, role) ? role : "";
+}
+
+function assignedTasks() {
+  const value = context?.assigned_tasks ?? signedInAccount?.assigned_tasks;
+  // Phiên từ phiên bản cũ chưa có assigned_tasks. Không được vì thế mà ẩn
+  // toàn bộ giao diện; máy chủ vẫn kiểm soát quyền thực khi mở tài liệu.
+  if (!Array.isArray(value)) return null;
+  return value.map(task => String(task).trim().toLowerCase()).filter(Boolean);
+}
+
+function taskAllowsLevel(level) {
+  const tasks = assignedTasks();
+  if (tasks === null || tasks.includes("*")) return true;
+  const prefix = taskPrefixByLevel[level];
+  return Boolean(prefix && tasks.some(task => task === prefix || task.startsWith(`${prefix}-`)));
+}
+
+function readerRole() {
+  return normaliseRole(context?.role) || normaliseRole(signedInAccount?.role);
+}
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>'\"]/g, character => ({
@@ -44,12 +85,15 @@ function setDecision(effect, text) {
 }
 
 function updateVisibleDocumentLevels() {
-  const role = context?.role || signedInAccount?.role || "";
+  const role = readerRole();
   const maximumLevel = roleDocumentLevel[role] || 0;
   const levels = document.querySelectorAll(".document-card[data-level]");
   let visibleCount = 0;
   levels.forEach(card => {
-    const visible = Number(card.dataset.level) <= maximumLevel;
+    const level = Number(card.dataset.level);
+    // Cấp cao kế thừa cấp thấp; đồng thời chỉ đưa ra các vùng thuộc phạm vi
+    // công việc được quản trị viên giao cho tài khoản đó.
+    const visible = level <= maximumLevel && taskAllowsLevel(level);
     card.hidden = !visible;
     if (visible) visibleCount += 1;
   });
@@ -59,7 +103,7 @@ function updateVisibleDocumentLevels() {
 }
 
 function canUploadDocuments() {
-  return Boolean(token && context && (roleDocumentLevel[context.role] || 0) > 0);
+  return Boolean(token && context && (roleDocumentLevel[readerRole()] || 0) > 0);
 }
 
 function renderAdminDataZones(zones) {
@@ -73,11 +117,12 @@ function renderAdminDataZones(zones) {
 
 function filterUploadZones() {
   const select = document.querySelector("#document-upload-form select[name=zone_id]");
-  const maximumLevel = roleDocumentLevel[context?.role] || 0;
+  const maximumLevel = roleDocumentLevel[readerRole()] || 0;
   [...select.options].forEach(option => {
     const level = { public: 1, internal: 2, confidential: 3, secret: 4, restricted: 5 }[option.value] || 99;
-    option.hidden = level > maximumLevel;
-    option.disabled = level > maximumLevel;
+    const permitted = level <= maximumLevel && taskAllowsLevel(level);
+    option.hidden = !permitted;
+    option.disabled = !permitted;
   });
   if (select.selectedOptions[0]?.disabled) {
     select.value = [...select.options].find(option => !option.disabled)?.value || "";
@@ -135,15 +180,54 @@ function updateSession() {
   }
   updateVisibleDocumentLevels();
   updateStorageVisibility();
+  document.querySelector("#reader-password-change-button").hidden = !ready;
 }
 
 function applyReaderIdentity(data) {
   token = data.access_token;
-  context = { username: data.subject.username, role: data.subject.role, ...data.reader_context };
+  // reader_context chỉ mô tả thiết bị/vùng mạng. Đặt nó trước subject để
+  // không bao giờ ghi đè role hoặc phạm vi của tài khoản.
+  context = {
+    ...data.reader_context,
+    username: data.subject.username,
+    role: data.subject.role,
+    organization_unit: data.subject.organization_unit,
+    assigned_tasks: data.subject.assigned_tasks
+  };
   signedInAccount = data.subject;
   sessionStorage.setItem("ztas_document_token", token);
   sessionStorage.setItem("ztas_document_context", JSON.stringify(context));
   updateSession();
+}
+
+async function endRevokedReaderSession(message) {
+  if (readerSessionRevoked) return;
+  readerSessionRevoked = true;
+  sessionStorage.removeItem("ztas_document_token");
+  sessionStorage.removeItem("ztas_document_context");
+  token = "";
+  context = null;
+  signedInAccount = null;
+  updateSession();
+  await fetch("/api/logout", { method: "POST" }).catch(() => undefined);
+  // replace() khong cho nguoi dung quay lai trang tai lieu bang nut Back voi
+  // phien cu trong bo nho trinh duyet.
+  location.replace(`/login?reason=${encodeURIComponent(message)}`);
+}
+
+async function validateReaderSession() {
+  if (readerSessionRevoked || !token || !context) return;
+  try {
+    const response = await fetch("/api/reader-session-status", { cache: "no-store" });
+    if (response.ok) return;
+    if (response.status === 401 || response.status === 403) {
+      const data = await response.json().catch(() => ({}));
+      await endRevokedReaderSession(
+        data.message || "Phiên đã bị thu hồi bởi quản trị viên."
+      );
+    }
+    // Loi mang tam thoi khong duoc coi la thu hoi phien.
+  } catch (_) {}
 }
 
 function requestHeaders() {
@@ -422,6 +506,42 @@ mfaCodeDialog.addEventListener("close", () => {
   resolve?.("");
 });
 
+document.querySelector("#reader-password-change-button").addEventListener("click", () => {
+  const form = document.querySelector("#reader-password-form");
+  form.reset();
+  document.querySelector("#reader-password-message").textContent = "";
+  readerPasswordDialog.showModal();
+  form.elements.current_password.focus();
+});
+document.querySelector("#reader-password-close").addEventListener("click", () => readerPasswordDialog.close());
+document.querySelector("#reader-password-cancel").addEventListener("click", () => readerPasswordDialog.close());
+document.querySelector("#reader-password-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const message = document.querySelector("#reader-password-message");
+  if (form.elements.new_password.value !== form.elements.confirm_password.value) {
+    message.textContent = "Hai lần nhập mật khẩu mới chưa khớp.";
+    return;
+  }
+  message.textContent = "Đang đổi mật khẩu…";
+  try {
+    const response = await fetch("/api/account/password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        current_password: form.elements.current_password.value,
+        new_password: form.elements.new_password.value
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || data.error || "Không thể đổi mật khẩu");
+    readerPasswordDialog.close();
+    await endRevokedReaderSession(data.message || "Đổi mật khẩu thành công. Vui lòng đăng nhập lại.");
+  } catch (error) {
+    message.textContent = error.message;
+  }
+});
+
 updateSession();
 
 async function restoreDashboardLogin() {
@@ -454,3 +574,10 @@ async function restoreDashboardLogin() {
 // Luon cap lai token doc tu cookie dang nhap he thong khi mo trang. Cach nay
 // tranh sessionStorage con token cu sau khi server hoac OPA da khoi dong lai.
 restoreDashboardLogin();
+
+// Thu hoi tai khoan/thiet bi tren server se day may khach ve man hinh dang
+// nhap toi da sau 5 giay, khong can cho nguoi dung bam mo tai lieu.
+window.setInterval(validateReaderSession, 5000);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) validateReaderSession();
+});

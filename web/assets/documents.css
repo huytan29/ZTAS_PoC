@@ -3,6 +3,7 @@
 .access-form { display:grid; gap:12px; padding:18px 20px 20px; }
 .access-form .button { width:100%; }
 .reader-account-note { padding:18px 20px 20px; color:var(--muted); }.reader-account-note strong { display:block; margin-bottom:4px; color:var(--green); }
+.access-panel__actions { padding:0 20px 16px; }.access-panel__actions .button { width:100%; }
 .reader-session { align-self:end; color:var(--muted); font-size:12px; white-space:nowrap; }
 .reader-session--ready { color:var(--green); font-weight:750; }
 .reader-policy-note { display:grid; gap:3px; padding:15px 20px 17px; border-top:1px solid var(--line); background:var(--surface-alt); color:var(--muted); font-size:12px; }

@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/assets/common.css">
-  <link rel="stylesheet" href="/assets/dashboard.css?v=7">
+  <link rel="stylesheet" href="/assets/dashboard.css?v=20261119-1">
   <script defer src="/assets/common.js"></script>
-  <script defer src="/assets/dashboard.js?v=20261118-1"></script>
+  <script defer src="/assets/dashboard.js?v=20261119-2"></script>
 </head>
 <body>
   <header class="topbar">
@@ -126,6 +126,22 @@
       </div>
     </section>
 
+    <section class="device-section" aria-label="Kho quản trị thiết bị">
+      <header class="section-heading">
+        <div>
+          <h2>Kho thiết bị đã cấp</h2>
+          <p>Theo dõi toàn bộ vòng đời thiết bị, kể cả máy bị thu hồi, bị chặn hoặc chưa gán tài khoản.</p>
+        </div>
+        <div class="section-heading__actions">
+          <button class="button button--secondary" id="inventory-admin-login-button" type="button">Đăng nhập quản trị</button>
+          <button class="button button--secondary" id="inventory-refresh-button" type="button" hidden>Làm mới kho</button>
+        </div>
+      </header>
+      <div class="device-grid" id="device-inventory-list">
+        <p class="empty-state">Đăng nhập quản trị để xem kho thiết bị.</p>
+      </div>
+    </section>
+
   </main>
 
   <dialog class="modal" id="admin-login-dialog">
@@ -161,9 +177,9 @@
       <label class="form-field">Mức tin cậy thiết bị<select name="trust_level" required><option value="1">Cấp 1 — Khách</option><option value="2">Cấp 2 — Cơ bản</option><option value="3">Cấp 3 — Thiết bị được quản lý</option><option value="4">Cấp 4 — Tin cậy</option><option value="5">Cấp 5 — Bảo mật cao</option></select></label>
       <label class="form-field">Vùng mạng<select name="location_id" required><option value="external-network">Vùng 0 — Mạng bên ngoài</option><option value="vpn-network">Vùng 1 — Mạng VPN</option><option value="lab-network">Vùng 2 — Mạng phòng Lab</option><option value="campus-network">Vùng 3 — Mạng nội bộ cơ quan</option><option value="secure-zone">Vùng 4 — Vùng bảo mật cao</option></select><small>Sau khi đổi vùng, người dùng đang mở tài liệu cần đăng xuất rồi đăng nhập lại để lấy ngữ cảnh mới.</small></label>
       <div class="assignment-current"><strong>Tài khoản đang được phép sử dụng thiết bị</strong><div class="assignment-chip-list" id="device-access-account-list"></div></div>
-      <label class="form-field">Cấp thêm quyền cho tài khoản<select id="device-access-account-select"><option value="">Đang tải tài khoản…</option></select><small>Chỉ tài khoản được gán mới có thể dùng thiết bị này để yêu cầu đọc tài liệu.</small></label>
+      <label class="form-field">Gán thêm tài khoản vào thiết bị<select id="device-access-account-select"><option value="">Đang tải tài khoản…</option></select><small>Đây là quyền dùng thiết bị, không phải quyền đọc tài liệu. Phạm vi tài liệu được chỉnh riêng tại menu Tài khoản.</small></label>
       <p class="form-message" id="device-access-message"></p>
-      <footer class="modal__footer"><button class="button button--secondary" type="button" id="device-access-grant-button">+ Cấp quyền tài khoản</button><button class="button button--primary" type="submit">Lưu Trust và vùng mạng</button></footer>
+      <footer class="modal__footer"><button class="button button--secondary" type="button" id="device-access-grant-button">+ Gán tài khoản vào thiết bị</button><button class="button button--primary" type="submit">Lưu Trust và vùng mạng</button></footer>
     </form>
   </dialog>
 
